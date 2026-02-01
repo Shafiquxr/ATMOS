@@ -10,7 +10,7 @@ import { useTaskStore } from '../stores/taskStore';
 import { useWalletStore } from '../stores/walletStore';
 
 export function GroupsPage() {
-  const { groups } = useGroupStore();
+  const { groups, members } = useGroupStore();
   const { user } = useAuthStore();
   const { getGroupTasks } = useTaskStore();
   const { getGroupWallet } = useWalletStore();
@@ -18,7 +18,12 @@ export function GroupsPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [filterStatus, setFilterStatus] = useState<'all' | 'active' | 'completed' | 'archived'>('all');
 
-  const filteredGroups = groups.filter((group) => {
+  const userGroups = groups.filter((group) => 
+    group.owner_id === user?.id || 
+    members.some((m) => m.group_id === group.id && (m.user_id === user?.id || m.user_id === user?.email))
+  );
+
+  const filteredGroups = userGroups.filter((group) => {
     const matchesSearch = group.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
                          group.description?.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesFilter = filterStatus === 'all' || group.status === filterStatus;
@@ -79,7 +84,13 @@ export function GroupsPage() {
               const tasks = getGroupTasks(group.id);
               const wallet = getGroupWallet(group.id);
               const pendingTasks = tasks.filter((t) => t.status !== 'completed').length;
-              const memberCount = group.owner_id === user?.id ? 1 : 0;
+              
+              const groupMembers = members.filter((m) => m.group_id === group.id);
+              const memberCount = groupMembers.length;
+              const userMember = groupMembers.find(
+                (m) => m.user_id === user?.id || m.user_id === user?.email
+              );
+              const userRole = userMember?.role || (group.owner_id === user?.id ? 'owner' : 'member');
 
               return (
                 <GroupCard
@@ -88,7 +99,7 @@ export function GroupsPage() {
                   memberCount={memberCount}
                   balance={wallet?.balance || 0}
                   pendingTasks={pendingTasks}
-                  userRole={group.owner_id === user?.id ? 'owner' : 'member'}
+                  userRole={userRole}
                 />
               );
             })}

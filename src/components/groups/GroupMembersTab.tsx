@@ -27,8 +27,10 @@ export function GroupMembersTab({ group }: GroupMembersTabProps) {
 
   const [newMemberEmail, setNewMemberEmail] = useState('');
   const [newMemberRole, setNewMemberRole] = useState<UserRole>('member');
+  const [newMemberContact, setNewMemberContact] = useState('');
 
   const members = getGroupMembers(group.id);
+  const { users: allUsers } = useAuthStore();
   const isOwner = user?.id === group.owner_id;
 
   const handleAddMember = async (e: React.FormEvent) => {
@@ -42,10 +44,14 @@ export function GroupMembersTab({ group }: GroupMembersTabProps) {
         return;
       }
 
+      // Try to find if user exists
+      const existingUser = allUsers.find(u => u.email === sanitizedEmail);
+
       addMember(group.id, {
         group_id: group.id,
-        user_id: sanitizedEmail,
+        user_id: existingUser?.id || sanitizedEmail,
         role: newMemberRole,
+        contact_info: newMemberContact,
       });
 
       addNotification({
@@ -53,7 +59,7 @@ export function GroupMembersTab({ group }: GroupMembersTabProps) {
         group_id: group.id,
         type: 'member_joined',
         title: 'New Member Added',
-        message: `${sanitizedEmail} has been added to ${group.name}`,
+        message: `${existingUser?.full_name || sanitizedEmail} has been added to ${group.name}`,
         send_email: true,
         send_sms: false,
         email_sent: false,
@@ -63,6 +69,7 @@ export function GroupMembersTab({ group }: GroupMembersTabProps) {
       addToast('success', 'Member added successfully');
       setNewMemberEmail('');
       setNewMemberRole('member');
+      setNewMemberContact('');
       setIsAddModalOpen(false);
     } catch (error) {
       addToast('error', 'Failed to add member');
@@ -131,11 +138,22 @@ export function GroupMembersTab({ group }: GroupMembersTabProps) {
                     </div>
                     <div>
                       <p className="font-medium">
-                        {member.user?.full_name || member.user_id}
+                        {member.user?.full_name || 
+                         allUsers.find(u => u.id === member.user_id || u.email === member.user_id)?.full_name || 
+                         'Pending Invite'}
                       </p>
                       <p className="text-sm text-nostalgic-600">
-                        {member.user?.email || member.user_id}
+                        {member.user?.email || 
+                         allUsers.find(u => u.id === member.user_id || u.email === member.user_id)?.email || 
+                         member.user_id}
                       </p>
+                      {member.contact_info && (['owner', 'organizer', 'team_lead'].includes(
+                        members.find(m => m.user_id === user?.id || m.user_id === user?.email)?.role || ''
+                      ) || isOwner) && (
+                        <p className="text-xs text-nostalgic-500 mt-0.5">
+                          Contact: {member.contact_info}
+                        </p>
+                      )}
                     </div>
                   </div>
 
@@ -225,6 +243,14 @@ export function GroupMembersTab({ group }: GroupMembersTabProps) {
               value={newMemberEmail}
               onChange={(e) => setNewMemberEmail(e.target.value)}
               placeholder="Enter member's email"
+            />
+
+            <Input
+              label="Contact Number (Optional)"
+              type="text"
+              value={newMemberContact}
+              onChange={(e) => setNewMemberContact(e.target.value)}
+              placeholder="Enter phone number or other contact info"
             />
 
             <div>

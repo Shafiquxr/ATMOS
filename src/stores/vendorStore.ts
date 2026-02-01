@@ -174,3 +174,10 @@ export const useVendorStore = create<VendorState>((set, get) => ({
     storageSet(REVIEWS_STORAGE_KEY, reviews);
   },
 }));
+
+// Listen for storage events to sync across tabs
+window.addEventListener('storage', (event) => {
+  if (event.key === VENDORS_STORAGE_KEY || event.key === REVIEWS_STORAGE_KEY) {
+    useVendorStore.getState().loadFromStorage();
+  }
+});

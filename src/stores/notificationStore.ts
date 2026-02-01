@@ -98,3 +98,10 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
     storageSet(NOTIFICATIONS_STORAGE_KEY, notifications);
   },
 }));
+
+// Listen for storage events to sync across tabs
+window.addEventListener('storage', (event) => {
+  if (event.key === NOTIFICATIONS_STORAGE_KEY) {
+    useNotificationStore.getState().loadFromStorage();
+  }
+});

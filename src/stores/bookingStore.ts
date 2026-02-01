@@ -125,3 +125,10 @@ export const useBookingStore = create<BookingState>((set, get) => ({
     storageSet(BOOKINGS_STORAGE_KEY, bookings);
   },
 }));
+
+// Listen for storage events to sync across tabs
+window.addEventListener('storage', (event) => {
+  if (event.key === BOOKINGS_STORAGE_KEY) {
+    useBookingStore.getState().loadFromStorage();
+  }
+});

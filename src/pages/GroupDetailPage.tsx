@@ -69,6 +69,24 @@ export function GroupDetailPage() {
   const wallet = getGroupWallet(group.id);
   const tasks = getGroupTasks(group.id);
   const bookings = getGroupBookings(group.id);
+  const groupMembers = useGroupStore((state) => state.members.filter(m => m.group_id === group.id));
+
+  const isMember = group.owner_id === user?.id || groupMembers.some(m => m.user_id === user?.id || m.user_id === user?.email);
+
+  if (!isMember) {
+    return (
+      <AppLayout>
+        <div className="flex flex-col items-center justify-center min-h-[50vh]">
+          <h2 className="text-2xl font-mono font-bold mb-4 text-red-600">Access Denied</h2>
+          <p className="text-nostalgic-600 mb-6">You do not have permission to access this group.</p>
+          <Button onClick={() => navigate('/groups')}>
+            <ArrowLeft size={20} className="mr-2" />
+            Back to My Groups
+          </Button>
+        </div>
+      </AppLayout>
+    );
+  }
 
   const isOwner = user?.id === group.owner_id;
 
@@ -219,7 +237,7 @@ export function GroupDetailPage() {
                       <Users className="text-nostalgic-600" size={24} />
                       <div>
                         <p className="text-2xl font-mono font-bold">
-                          {group.owner_id ? 1 : 0}
+                          {groupMembers.length}
                         </p>
                         <p className="text-sm text-nostalgic-600">Members</p>
                       </div>

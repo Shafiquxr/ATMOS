@@ -40,6 +40,7 @@ export function GroupTasksTab({ group }: GroupTasksTabProps) {
 
   const tasks = getGroupTasks(group.id);
   const members = getGroupMembers(group.id);
+  const { users: allUsers } = useAuthStore();
   const isOwner = user?.id === group.owner_id;
 
   const filteredTasks = tasks.filter((task) => {
@@ -89,18 +90,36 @@ export function GroupTasksTab({ group }: GroupTasksTabProps) {
     const task = tasks.find((t) => t.id === taskId);
     updateTask(taskId, { status });
 
-    if (status === 'completed' && task?.assignee_id) {
-      addNotification({
-        user_id: task.assignee_id,
-        group_id: group.id,
-        type: 'task_completed',
-        title: 'Task Completed',
-        message: `Task "${task.title}" has been marked as completed`,
-        send_email: true,
-        send_sms: false,
-        email_sent: false,
-        sms_sent: false,
-      });
+    if (task) {
+      // Notify assignee if status changed by someone else
+      if (task.assignee_id && task.assignee_id !== user?.id) {
+        addNotification({
+          user_id: task.assignee_id,
+          group_id: group.id,
+          type: 'general',
+          title: 'Task Updated',
+          message: `Task "${task.title}" has been marked as ${status.replace('_', ' ')}`,
+          send_email: true,
+          send_sms: false,
+          email_sent: false,
+          sms_sent: false,
+        });
+      }
+
+      // Notify creator if status changed by someone else
+      if (task.created_by && task.created_by !== user?.id) {
+        addNotification({
+          user_id: task.created_by,
+          group_id: group.id,
+          type: 'task_completed',
+          title: 'Task Progress Update',
+          message: `Task "${task.title}" has been marked as ${status.replace('_', ' ')} by ${user?.full_name}`,
+          send_email: true,
+          send_sms: false,
+          email_sent: false,
+          sms_sent: false,
+        });
+      }
     }
 
     addToast('success', 'Task status updated');
@@ -211,7 +230,9 @@ export function GroupTasksTab({ group }: GroupTasksTabProps) {
                       {task.assignee_id && (
                         <span className="flex items-center gap-1">
                           <User size={14} />
-                          {members.find((m) => m.user_id === task.assignee_id)?.user?.full_name || task.assignee_id}
+                          {allUsers.find(u => u.id === task.assignee_id || u.email === task.assignee_id)?.full_name || 
+                           members.find((m) => m.user_id === task.assignee_id)?.user?.full_name || 
+                           task.assignee_id}
                         </span>
                       )}
                       {task.deadline && (
@@ -332,7 +353,9 @@ export function GroupTasksTab({ group }: GroupTasksTabProps) {
                 <option value="">Unassigned</option>
                 {members.map((member) => (
                   <option key={member.id} value={member.user_id}>
-                    {member.user?.full_name || member.user_id}
+                    {allUsers.find(u => u.id === member.user_id || u.email === member.user_id)?.full_name || 
+                     member.user?.full_name || 
+                     member.user_id}
                   </option>
                 ))}
               </select>

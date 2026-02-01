@@ -12,13 +12,19 @@ import { useAuthStore } from '../stores/authStore';
 
 export function TasksPage() {
   const { user } = useAuthStore();
-  const { groups } = useGroupStore();
+  const { groups, members } = useGroupStore();
   const { getGroupTasks, updateTask } = useTaskStore();
+  const { users: allUsers } = useAuthStore();
   const [filterStatus, setFilterStatus] = useState<TaskStatus | 'all'>('all');
   const [filterPriority, setFilterPriority] = useState<TaskPriority | 'all'>('all');
 
+  const userGroups = groups.filter((group) => 
+    group.owner_id === user?.id || 
+    members.some((m) => m.group_id === group.id && (m.user_id === user?.id || m.user_id === user?.email))
+  );
+
   // Get all tasks from all groups
-  const allTasks = groups.flatMap((group) => getGroupTasks(group.id));
+  const allTasks = userGroups.flatMap((group) => getGroupTasks(group.id));
 
   const filteredTasks = allTasks.filter((task) => {
     const matchesStatus = filterStatus === 'all' || task.status === filterStatus;
@@ -146,7 +152,8 @@ export function TasksPage() {
                           {task.assignee_id && (
                             <span className="flex items-center gap-1">
                               <User size={14} />
-                              {task.assignee_id}
+                              {allUsers.find(u => u.id === task.assignee_id || u.email === task.assignee_id)?.full_name || 
+                               task.assignee_id}
                             </span>
                           )}
                           {task.deadline && (

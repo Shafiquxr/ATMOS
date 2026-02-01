@@ -11,35 +11,40 @@ import { useWalletStore } from '../stores/walletStore';
 
 export function DashboardPage() {
   const { user } = useAuthStore();
-  const { groups } = useGroupStore();
+  const { groups, members } = useGroupStore();
   const { getGroupTasks } = useTaskStore();
   const { getGroupWallet } = useWalletStore();
 
+  const userGroups = groups.filter((group) => 
+    group.owner_id === user?.id || 
+    members.some((m) => m.group_id === group.id && (m.user_id === user?.id || m.user_id === user?.email))
+  );
+
   // Calculate stats from real data
-  const totalBalance = groups.reduce((sum, group) => {
+  const totalBalance = userGroups.reduce((sum, group) => {
     const wallet = getGroupWallet(group.id);
     return sum + (wallet?.balance || 0);
   }, 0);
 
-  const totalTasks = groups.reduce((sum, group) => {
+  const totalTasks = userGroups.reduce((sum, group) => {
     const tasks = getGroupTasks(group.id);
     return sum + tasks.length;
   }, 0);
 
-  const pendingTasks = groups.reduce((sum, group) => {
+  const pendingTasksCount = userGroups.reduce((sum, group) => {
     const tasks = getGroupTasks(group.id);
     return sum + tasks.filter((t) => t.status !== 'completed').length;
   }, 0);
 
   const stats = {
-    totalGroups: groups.length,
-    pendingTasks,
+    totalGroups: userGroups.length,
+    pendingTasks: pendingTasksCount,
     totalBalance,
   };
 
   // Generate alerts based on real data
   const alerts: Array<{ id: string; type: 'info' | 'urgent'; message: string; link: string }> = [];
-  groups.forEach((group) => {
+  userGroups.forEach((group) => {
     const tasks = getGroupTasks(group.id);
     const wallet = getGroupWallet(group.id);
     const overdueTasks = tasks.filter((t) =>
@@ -65,19 +70,22 @@ export function DashboardPage() {
     }
   });
 
-  const recentGroups = groups.slice(0, 3).map((group) => {
+  const recentGroups = userGroups.slice(0, 3).map((group) => {
     const tasks = getGroupTasks(group.id);
     const wallet = getGroupWallet(group.id);
     const pendingTasksCount = tasks.filter((t) => t.status !== 'completed').length;
     const overdueTasks = tasks.filter((t) => 
       t.status !== 'completed' && t.deadline && new Date(t.deadline) < new Date()
     ).length;
+    
+    const groupMembers = members.filter(m => m.group_id === group.id);
+    const userMember = groupMembers.find(m => m.user_id === user?.id || m.user_id === user?.email);
 
     return {
       id: group.id,
       name: group.name,
-      role: group.owner_id === user?.id ? 'owner' : 'member',
-      members: 1, // Simplified for now
+      role: userMember?.role || (group.owner_id === user?.id ? 'owner' : 'member'),
+      members: groupMembers.length,
       balance: wallet?.balance || 0,
       pendingTasks: pendingTasksCount,
       overdueTasks,
