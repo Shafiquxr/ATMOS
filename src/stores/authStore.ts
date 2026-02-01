@@ -1,11 +1,11 @@
 import { create } from 'zustand';
 import { User } from '../types';
+import { supabase } from '../utils/supabase';
 import { storageGet, storageSet, storageRemove } from '../utils/storage';
 import { generateUniqueId } from '../utils/idGenerator';
 import { sanitizeEmail, sanitizePhoneNumber } from '../utils/security';
 
 const AUTH_STORAGE_KEY = 'atmos_auth';
-const USERS_STORAGE_KEY = 'atmos_users';
 
 interface AuthState {
   user: User | null;
@@ -16,34 +16,20 @@ interface AuthState {
   setLoading: (loading: boolean) => void;
   login: (email: string, password: string) => Promise<void>;
   signup: (data: { full_name: string; email: string; phone: string; password: string }) => Promise<void>;
-  logout: () => void;
+  logout: () => Promise<void>;
   loadFromStorage: () => void;
-  saveToStorage: () => void;
+  checkSession: () => Promise<void>;
+  fetchUsers: () => Promise<void>;
 }
 
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-const loadUsersFromStorage = (): User[] => {
-  return storageGet<User[]>(USERS_STORAGE_KEY, []);
-};
-
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-const _saveUsersToStorage = (users: User[]): void => {
-  storageSet(USERS_STORAGE_KEY, users);
-};
-
-export const useAuthStore = create<AuthState>((set, get) => ({
+export const useAuthStore = create<AuthState>((set) => ({
   user: null,
   isAuthenticated: false,
   isLoading: false,
-  users: loadUsersFromStorage(),
+  users: [],
 
   setUser: (user) => {
     set({ user, isAuthenticated: !!user });
-    if (user) {
-      storageSet(AUTH_STORAGE_KEY, user);
-    } else {
-      storageRemove(AUTH_STORAGE_KEY);
-    }
   },
   
   setLoading: (loading) => set({ isLoading: loading }),
@@ -52,25 +38,47 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     set({ isLoading: true });
     try {
       const sanitizedEmail = sanitizeEmail(email);
-      const users = get().users;
       
-      const user = users.find(
-        (u) => u.email === sanitizedEmail && u.password === password
-      );
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: sanitizedEmail,
+        password: password,
+      });
 
-      if (!user) {
+      if (error) {
+        throw new Error(error.message);
+      }
+
+      if (!data.user) {
         throw new Error('Invalid email or password');
       }
 
-      const { password: _, ...userWithoutPassword } = user as any;
-      
+      const { data: profileData, error: profileError } = await supabase
+        .from('users')
+        .select('*')
+        .eq('id', data.user.id)
+        .single();
+
+      if (profileError) {
+        throw new Error('Failed to load user profile');
+      }
+
+      const user: User = {
+        id: profileData.id,
+        email: profileData.email,
+        full_name: profileData.full_name,
+        phone: profileData.phone,
+        avatar_url: profileData.avatar_url,
+        is_phone_verified: profileData.is_phone_verified || false,
+        created_at: profileData.created_at,
+        updated_at: profileData.updated_at,
+      };
+
       set({ 
-        user: userWithoutPassword, 
+        user, 
         isAuthenticated: true,
-        users 
       });
       
-      storageSet(AUTH_STORAGE_KEY, userWithoutPassword);
+      storageSet(AUTH_STORAGE_KEY, user);
     } catch (error) {
       console.error('Login error:', error);
       throw error;
@@ -85,35 +93,54 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       const sanitizedEmail = sanitizeEmail(data.email);
       const sanitizedPhone = sanitizePhoneNumber(data.phone);
       
-      const users = get().users;
-      
-      if (users.some((u) => u.email === sanitizedEmail)) {
-        throw new Error('User with this email already exists');
+      const { data: authData, error } = await supabase.auth.signUp({
+        email: sanitizedEmail,
+        password: data.password,
+        options: {
+          data: {
+            full_name: data.full_name.trim(),
+            phone: sanitizedPhone,
+          },
+        },
+      });
+
+      if (error) {
+        throw new Error(error.message);
       }
 
-      const newUser: User & { password: string } = {
-        id: generateUniqueId(),
+      if (!authData.user) {
+        throw new Error('Failed to create user');
+      }
+
+      const userData = {
+        id: authData.user.id,
         email: sanitizedEmail,
         full_name: data.full_name.trim(),
         phone: sanitizedPhone,
-        password: data.password,
         is_phone_verified: false,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       };
 
-      const updatedUsers = [...users, newUser];
-      
-      const { password: _, ...userWithoutPassword } = newUser;
-      
+      const { error: insertError } = await supabase
+        .from('users')
+        .insert([userData]);
+
+      if (insertError) {
+        throw new Error('Failed to save user profile');
+      }
+
+      const user: User = {
+        ...userData,
+        avatar_url: undefined,
+      };
+
       set({ 
-        user: userWithoutPassword, 
+        user, 
         isAuthenticated: true,
-        users: updatedUsers 
       });
       
-      storageSet(USERS_STORAGE_KEY, updatedUsers);
-      storageSet(AUTH_STORAGE_KEY, userWithoutPassword);
+      storageSet(AUTH_STORAGE_KEY, user);
     } catch (error) {
       console.error('Signup error:', error);
       throw error;
@@ -122,37 +149,98 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     }
   },
 
-  logout: () => {
-    set({ user: null, isAuthenticated: false });
-    storageRemove(AUTH_STORAGE_KEY);
+  logout: async () => {
+    try {
+      await supabase.auth.signOut();
+    } catch (error) {
+      console.error('Logout error:', error);
+    } finally {
+      set({ user: null, isAuthenticated: false });
+      storageRemove(AUTH_STORAGE_KEY);
+    }
   },
 
   loadFromStorage: () => {
     const savedUser = storageGet<User | null>(AUTH_STORAGE_KEY, null);
-    const savedUsers = loadUsersFromStorage();
     set({ 
       user: savedUser, 
       isAuthenticated: !!savedUser,
-      users: savedUsers
     });
   },
 
-  saveToStorage: () => {
-    const { user, users } = get();
-    if (user) {
-      storageSet(AUTH_STORAGE_KEY, user);
-    } else {
+  checkSession: async () => {
+    try {
+      const { data: { session }, error } = await supabase.auth.getSession();
+      
+      if (error) {
+        throw error;
+      }
+
+      if (session?.user) {
+        const { data: profileData, error: profileError } = await supabase
+          .from('users')
+          .select('*')
+          .eq('id', session.user.id)
+          .single();
+
+        if (!profileError && profileData) {
+          const user: User = {
+            id: profileData.id,
+            email: profileData.email,
+            full_name: profileData.full_name,
+            phone: profileData.phone,
+            avatar_url: profileData.avatar_url,
+            is_phone_verified: profileData.is_phone_verified || false,
+            created_at: profileData.created_at,
+            updated_at: profileData.updated_at,
+          };
+
+          set({ 
+            user, 
+            isAuthenticated: true,
+          });
+          
+          storageSet(AUTH_STORAGE_KEY, user);
+          return;
+        }
+      }
+      
+      set({ user: null, isAuthenticated: false });
+      storageRemove(AUTH_STORAGE_KEY);
+    } catch (error) {
+      console.error('Session check error:', error);
+      set({ user: null, isAuthenticated: false });
       storageRemove(AUTH_STORAGE_KEY);
     }
-    storageSet(USERS_STORAGE_KEY, users);
+  },
+
+  fetchUsers: async () => {
+    set({ isLoading: true });
+    try {
+      const { data, error } = await supabase
+        .from('users')
+        .select('*');
+
+      if (error) throw error;
+
+      const users: User[] = (data || []).map(u => ({
+        id: u.id,
+        email: u.email,
+        full_name: u.full_name,
+        phone: u.phone,
+        avatar_url: u.avatar_url,
+        is_phone_verified: u.is_phone_verified || false,
+        created_at: u.created_at,
+        updated_at: u.updated_at,
+      }));
+
+      set({ users });
+    } catch (error) {
+      console.error('Failed to fetch users:', error);
+    } finally {
+      set({ isLoading: false });
+    }
   },
 }));
 
-// Listen for storage events to sync across tabs
-window.addEventListener('storage', (event) => {
-  if (event.key === AUTH_STORAGE_KEY || event.key === USERS_STORAGE_KEY) {
-    useAuthStore.getState().loadFromStorage();
-  }
-});
-
-useAuthStore.getState().loadFromStorage();
+useAuthStore.getState().checkSession();

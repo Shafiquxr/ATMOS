@@ -82,7 +82,7 @@ export function GroupsPage() {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {filteredGroups.map((group) => {
               const tasks = getGroupTasks(group.id);
-              const wallet = getGroupWallet(group.id);
+              const wallet = await getGroupWallet(group.id);
               const pendingTasks = tasks.filter((t) => t.status !== 'completed').length;
               
               const groupMembers = members.filter((m) => m.group_id === group.id);

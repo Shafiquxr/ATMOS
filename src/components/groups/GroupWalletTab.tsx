@@ -17,7 +17,7 @@ interface GroupWalletTabProps {
 
 export function GroupWalletTab({ group }: GroupWalletTabProps) {
   const { user } = useAuthStore();
-  const { getGroupWallet, getGroupTransactions, addFunds, makePayment, lockEscrow } = useWalletStore();
+  const { fetchGroupWallet: getGroupWallet, getGroupTransactions, addFunds, makePayment, lockEscrow } = useWalletStore();
   const { addToast } = useToastStore();
 
   const [isAddFundsModalOpen, setIsAddFundsModalOpen] = useState(false);
@@ -28,7 +28,7 @@ export function GroupWalletTab({ group }: GroupWalletTabProps) {
   const [description, setDescription] = useState('');
   const [vendorId, setVendorId] = useState('');
 
-  const wallet = getGroupWallet(group.id);
+  const wallet = await getGroupWallet(group.id);
   const transactions = getGroupTransactions(group.id);
 
   const handleAddFunds = async (e: React.FormEvent) => {
