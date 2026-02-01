@@ -1,29 +1,29 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Eye, EyeOff, LogIn } from 'lucide-react';
+import { useAuthStore } from '../../stores/authStore';
+import { useToastStore } from '../../stores/toastStore';
 
 export function LoginPage() {
   const navigate = useNavigate();
+  const { login, isLoading } = useAuthStore();
+  const { addToast } = useToastStore();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
-  const [loading, setLoading] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
-    setLoading(true);
 
     try {
-      console.log('Login attempt:', { email });
-      setTimeout(() => {
-        navigate('/dashboard');
-      }, 1000);
+      await login(email, password);
+      addToast('success', 'Welcome back!', 'You have successfully logged in.');
+      navigate('/dashboard');
     } catch (err) {
       setError('Invalid email or password');
-    } finally {
-      setLoading(false);
+      addToast('error', 'Login failed', 'Please check your credentials and try again.');
     }
   };
 
@@ -102,10 +102,10 @@ export function LoginPage() {
 
             <button
               type="submit"
-              disabled={loading}
+              disabled={isLoading}
               className="btn btn-primary w-full flex items-center justify-center gap-2"
             >
-              {loading ? (
+              {isLoading ? (
                 'Logging in...'
               ) : (
                 <>
