@@ -1,9 +1,15 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Eye, EyeOff, UserPlus } from 'lucide-react';
+import { useAuthStore } from '../../stores/authStore';
+import { useToastStore } from '../../stores/toastStore';
+import { validatePassword, sanitizeEmail, sanitizePhoneNumber } from '../../utils/security';
 
 export function SignUpPage() {
   const navigate = useNavigate();
+  const { signup, isLoading } = useAuthStore();
+  const { addToast } = useToastStore();
+  
   const [formData, setFormData] = useState({
     fullName: '',
     email: '',
@@ -15,7 +21,6 @@ export function SignUpPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [error, setError] = useState('');
-  const [loading, setLoading] = useState(false);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value, type, checked } = e.target;
@@ -25,11 +30,13 @@ export function SignUpPage() {
     }));
   };
 
-  const getPasswordStrength = (password: string): string => {
-    if (password.length === 0) return '';
-    if (password.length < 8) return 'Weak';
-    if (!/(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/.test(password)) return 'Medium';
-    return 'Strong';
+  const getPasswordStrength = (password: string): { strength: string; color: string } => {
+    if (password.length === 0) return { strength: '', color: '' };
+    if (password.length < 8) return { strength: 'Weak', color: 'text-red-700 font-bold' };
+    if (!/(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/.test(password)) {
+      return { strength: 'Medium', color: 'text-yellow-700 font-bold' };
+    }
+    return { strength: 'Strong', color: 'text-green-700 font-bold' };
   };
 
   const passwordStrength = getPasswordStrength(formData.password);
@@ -38,27 +45,44 @@ export function SignUpPage() {
     e.preventDefault();
     setError('');
 
+    if (!formData.fullName.trim()) {
+      setError('Full name is required');
+      return;
+    }
+
+    if (!sanitizeEmail(formData.email)) {
+      setError('Invalid email address');
+      return;
+    }
+
     if (formData.password !== formData.confirmPassword) {
       setError('Passwords do not match');
       return;
     }
 
-    if (!formData.acceptTerms) {
-      setError('Please accept the terms and conditions');
+    const passwordValidation = validatePassword(formData.password);
+    if (!passwordValidation.valid) {
+      setError(passwordValidation.message || 'Invalid password');
       return;
     }
 
-    setLoading(true);
+    if (!formData.acceptTerms) {
+      setError('Please accept terms and conditions');
+      return;
+    }
 
     try {
-      console.log('Sign up attempt:', formData);
-      setTimeout(() => {
-        navigate('/dashboard');
-      }, 1000);
-    } catch (err) {
-      setError('Failed to create account. Please try again.');
-    } finally {
-      setLoading(false);
+      await signup({
+        full_name: formData.fullName.trim(),
+        email: sanitizeEmail(formData.email),
+        phone: sanitizePhoneNumber(formData.phone),
+        password: formData.password,
+      });
+      
+      addToast('success', 'Account created successfully!', 'Welcome to ATMOS.');
+      navigate('/dashboard');
+    } catch (err: any) {
+      setError(err.message || 'Failed to create account. Please try again.');
     }
   };
 
@@ -140,7 +164,7 @@ export function SignUpPage() {
                   value={formData.password}
                   onChange={handleChange}
                   className="input pr-12"
-                  placeholder="••••••••"
+                  placeholder="•••••••"
                   required
                 />
                 <button
@@ -154,17 +178,14 @@ export function SignUpPage() {
               {formData.password && (
                 <div className="mt-1 text-xs">
                   <span className="text-nostalgic-600">Strength: </span>
-                  <span
-                    className={
-                      passwordStrength === 'Strong'
-                        ? 'text-green-700 font-bold'
-                        : passwordStrength === 'Medium'
-                        ? 'text-yellow-700 font-bold'
-                        : 'text-red-700 font-bold'
-                    }
-                  >
-                    {passwordStrength}
+                  <span className={passwordStrength.color}>
+                    {passwordStrength.strength}
                   </span>
+                  {passwordStrength.strength !== 'Strong' && (
+                    <span className="ml-2 text-nostalgic-600">
+                      (Must be 8+ characters with uppercase, lowercase, and number)
+                    </span>
+                  )}
                 </div>
               )}
             </div>
@@ -181,7 +202,7 @@ export function SignUpPage() {
                   value={formData.confirmPassword}
                   onChange={handleChange}
                   className="input pr-12"
-                  placeholder="••••••••"
+                  placeholder="•••••••"
                   required
                 />
                 <button
@@ -202,9 +223,10 @@ export function SignUpPage() {
                 checked={formData.acceptTerms}
                 onChange={handleChange}
                 className="mt-1 mr-2 w-4 h-4 border-2 border-black"
+                required
               />
               <label htmlFor="acceptTerms" className="text-sm text-nostalgic-700">
-                I accept the{' '}
+                I accept{' '}
                 <Link to="/terms" className="text-black underline hover:no-underline">
                   Terms and Conditions
                 </Link>{' '}
@@ -217,10 +239,10 @@ export function SignUpPage() {
 
             <button
               type="submit"
-              disabled={loading}
+              disabled={isLoading}
               className="btn btn-primary w-full flex items-center justify-center gap-2"
             >
-              {loading ? (
+              {isLoading ? (
                 'Creating account...'
               ) : (
                 <>

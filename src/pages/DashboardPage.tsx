@@ -5,51 +5,84 @@ import { Card, CardHeader, CardTitle, CardContent } from '../components/ui/Card'
 import { Badge } from '../components/ui/Badge';
 import { Button } from '../components/ui/Button';
 import { useAuthStore } from '../stores/authStore';
+import { useGroupStore } from '../stores/groupStore';
+import { useTaskStore } from '../stores/taskStore';
+import { useWalletStore } from '../stores/walletStore';
 
 export function DashboardPage() {
   const { user } = useAuthStore();
+  const { groups } = useGroupStore();
+  const { getGroupTasks } = useTaskStore();
+  const { getGroupWallet } = useWalletStore();
 
-  // Mock data for demonstration
+  // Calculate stats from real data
+  const totalBalance = groups.reduce((sum, group) => {
+    const wallet = getGroupWallet(group.id);
+    return sum + (wallet?.balance || 0);
+  }, 0);
+
+  const totalTasks = groups.reduce((sum, group) => {
+    const tasks = getGroupTasks(group.id);
+    return sum + tasks.length;
+  }, 0);
+
+  const pendingTasks = groups.reduce((sum, group) => {
+    const tasks = getGroupTasks(group.id);
+    return sum + tasks.filter((t) => t.status !== 'completed').length;
+  }, 0);
+
   const stats = {
-    totalGroups: 3,
-    pendingTasks: 5,
-    totalBalance: 45000,
+    totalGroups: groups.length,
+    pendingTasks,
+    totalBalance,
   };
 
-  const alerts = [
-    { id: 1, type: 'warning', message: 'Payment due for Tech Conference venue - ₹15,000', link: '/wallet' },
-    { id: 2, type: 'urgent', message: '3 tasks overdue in Europe Trip', link: '/tasks' },
-  ];
+  // Generate alerts based on real data
+  const alerts: Array<{ id: string; type: 'info' | 'urgent'; message: string; link: string }> = [];
+  groups.forEach((group) => {
+    const tasks = getGroupTasks(group.id);
+    const wallet = getGroupWallet(group.id);
+    const overdueTasks = tasks.filter((t) =>
+      t.status !== 'completed' && t.deadline && new Date(t.deadline) < new Date()
+    );
 
-  const recentGroups = [
-    {
-      id: '1',
-      name: 'Tech Conference 2024',
-      role: 'owner',
-      members: 12,
-      balance: 25000,
-      pendingTasks: 3,
-      overdueTasks: 0,
-    },
-    {
-      id: '2',
-      name: 'Europe Trip Summer',
-      role: 'organizer',
-      members: 8,
-      balance: 15000,
-      pendingTasks: 2,
-      overdueTasks: 1,
-    },
-    {
-      id: '3',
-      name: 'Photography Club',
-      role: 'member',
-      members: 25,
-      balance: 5000,
-      pendingTasks: 0,
-      overdueTasks: 0,
-    },
-  ];
+    if (wallet?.balance && wallet.balance > 0) {
+      alerts.push({
+        id: `wallet-${group.id}`,
+        type: 'info' as const,
+        message: `${group.name}: ₹${wallet.balance.toLocaleString()} available in wallet`,
+        link: `/groups/${group.id}/wallet`,
+      });
+    }
+
+    if (overdueTasks.length > 0) {
+      alerts.push({
+        id: `tasks-${group.id}`,
+        type: 'urgent' as const,
+        message: `${group.name}: ${overdueTasks.length} overdue task${overdueTasks.length > 1 ? 's' : ''}`,
+        link: `/groups/${group.id}/tasks`,
+      });
+    }
+  });
+
+  const recentGroups = groups.slice(0, 3).map((group) => {
+    const tasks = getGroupTasks(group.id);
+    const wallet = getGroupWallet(group.id);
+    const pendingTasksCount = tasks.filter((t) => t.status !== 'completed').length;
+    const overdueTasks = tasks.filter((t) => 
+      t.status !== 'completed' && t.deadline && new Date(t.deadline) < new Date()
+    ).length;
+
+    return {
+      id: group.id,
+      name: group.name,
+      role: group.owner_id === user?.id ? 'owner' : 'member',
+      members: 1, // Simplified for now
+      balance: wallet?.balance || 0,
+      pendingTasks: pendingTasksCount,
+      overdueTasks,
+    };
+  });
 
   return (
     <AppLayout>
@@ -187,6 +220,21 @@ export function DashboardPage() {
               </Link>
             ))}
           </div>
+
+          {recentGroups.length === 0 && (
+            <div className="text-center py-12">
+              <div className="inline-block p-6 bg-white border-2 border-black shadow-retro-sm">
+                <p className="text-lg font-medium mb-2">No groups yet</p>
+                <p className="text-nostalgic-600 mb-4">Create your first group to get started</p>
+                <Link to="/groups">
+                  <Button>
+                    <Plus size={20} className="mr-2" />
+                    Create Group
+                  </Button>
+                </Link>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Quick Actions */}

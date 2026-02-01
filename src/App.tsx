@@ -4,6 +4,7 @@ import { SignUpPage } from './pages/auth/SignUpPage';
 import { DashboardPage } from './pages/DashboardPage';
 import { LandingPage } from './pages/LandingPage';
 import { GroupsPage } from './pages/GroupsPage';
+import { GroupDetailPage } from './pages/GroupDetailPage';
 import { TasksPage } from './pages/TasksPage';
 import { WalletPage } from './pages/WalletPage';
 import { ProtectedRoute } from './components/auth/ProtectedRoute';
@@ -32,6 +33,14 @@ function App() {
           element={
             <ProtectedRoute>
               <GroupsPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/groups/:groupId"
+          element={
+            <ProtectedRoute>
+              <GroupDetailPage />
             </ProtectedRoute>
           }
         />

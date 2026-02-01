@@ -5,54 +5,20 @@ import { Button } from '../components/ui/Button';
 import { GroupCard } from '../components/groups/GroupCard';
 import { CreateGroupModal } from '../components/groups/CreateGroupModal';
 import { useGroupStore } from '../stores/groupStore';
+import { useAuthStore } from '../stores/authStore';
+import { useTaskStore } from '../stores/taskStore';
+import { useWalletStore } from '../stores/walletStore';
 
 export function GroupsPage() {
   const { groups } = useGroupStore();
+  const { user } = useAuthStore();
+  const { getGroupTasks } = useTaskStore();
+  const { getGroupWallet } = useWalletStore();
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [filterStatus, setFilterStatus] = useState<'all' | 'active' | 'completed' | 'archived'>('all');
 
-  // Mock data for demonstration
-  const mockGroups = groups.length > 0 ? groups : [
-    {
-      id: '1',
-      name: 'Tech Conference 2024',
-      description: 'Annual technology conference with speakers from around the world',
-      category: 'event' as const,
-      start_date: '2024-06-15',
-      location: 'San Francisco, CA',
-      owner_id: '1',
-      status: 'active' as const,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    },
-    {
-      id: '2',
-      name: 'Europe Trip Summer',
-      description: '2-week backpacking trip across Europe',
-      category: 'trip' as const,
-      start_date: '2024-07-01',
-      end_date: '2024-07-15',
-      location: 'Europe',
-      owner_id: '1',
-      status: 'active' as const,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    },
-    {
-      id: '3',
-      name: 'Photography Club',
-      description: 'Monthly meetups and photo walks',
-      category: 'club' as const,
-      location: 'New York, NY',
-      owner_id: '1',
-      status: 'active' as const,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    },
-  ];
-
-  const filteredGroups = mockGroups.filter((group) => {
+  const filteredGroups = groups.filter((group) => {
     const matchesSearch = group.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
                          group.description?.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesFilter = filterStatus === 'all' || group.status === filterStatus;
@@ -109,16 +75,23 @@ export function GroupsPage() {
         {/* Groups Grid */}
         {filteredGroups.length > 0 ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {filteredGroups.map((group) => (
-              <GroupCard
-                key={group.id}
-                group={group}
-                memberCount={12}
-                balance={25000}
-                pendingTasks={3}
-                userRole="owner"
-              />
-            ))}
+            {filteredGroups.map((group) => {
+              const tasks = getGroupTasks(group.id);
+              const wallet = getGroupWallet(group.id);
+              const pendingTasks = tasks.filter((t) => t.status !== 'completed').length;
+              const memberCount = group.owner_id === user?.id ? 1 : 0;
+
+              return (
+                <GroupCard
+                  key={group.id}
+                  group={group}
+                  memberCount={memberCount}
+                  balance={wallet?.balance || 0}
+                  pendingTasks={pendingTasks}
+                  userRole={group.owner_id === user?.id ? 'owner' : 'member'}
+                />
+              );
+            })}
           </div>
         ) : (
           <div className="text-center py-12">
