@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { Bell, Settings, LogOut, Users, LayoutDashboard, Wallet, ClipboardList, UserCircle } from 'lucide-react';
 import { useAuthStore } from '../stores/authStore';
 import { useToastStore } from '../stores/toastStore';
+import { useNotificationStore } from '../stores/notificationStore';
 
 interface AppLayoutProps {
   children: ReactNode;
@@ -12,6 +13,9 @@ export function AppLayout({ children }: AppLayoutProps) {
   const navigate = useNavigate();
   const { user, logout } = useAuthStore();
   const { addToast } = useToastStore();
+  const { getUnreadCount } = useNotificationStore();
+  
+  const unreadCount = user ? getUnreadCount(user.id) : 0;
 
   const handleLogout = () => {
     logout();
@@ -59,7 +63,11 @@ export function AppLayout({ children }: AppLayoutProps) {
               {/* Notifications */}
               <button className="p-2 hover:bg-nostalgic-100 relative transition-colors">
                 <Bell size={20} />
-                <span className="absolute top-1 right-1 w-2 h-2 bg-red-600 rounded-full" />
+                {unreadCount > 0 && (
+                  <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-600 text-white text-xs font-bold rounded-full flex items-center justify-center">
+                    {unreadCount > 9 ? '9+' : unreadCount}
+                  </span>
+                )}
               </button>
 
               {/* User Menu */}
@@ -93,7 +101,7 @@ export function AppLayout({ children }: AppLayoutProps) {
       </header>
 
       {/* Main Content */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 pb-24 md:pb-8">
         {children}
       </main>
 

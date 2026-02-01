@@ -1,22 +1,21 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Modal, ModalFooter } from '../ui/Modal';
 import { Button } from '../ui/Button';
 import { Input } from '../ui/Input';
-import { useToastStore } from '../../stores/toastStore';
+import { Group, GroupCategory } from '../../types';
 import { useGroupStore } from '../../stores/groupStore';
-import { useAuthStore } from '../../stores/authStore';
-import { GroupCategory } from '../../types';
+import { useToastStore } from '../../stores/toastStore';
 import { sanitizeInput } from '../../utils/security';
 
-interface CreateGroupModalProps {
+interface EditGroupModalProps {
   isOpen: boolean;
   onClose: () => void;
+  group: Group;
 }
 
-export function CreateGroupModal({ isOpen, onClose }: CreateGroupModalProps) {
+export function EditGroupModal({ isOpen, onClose, group }: EditGroupModalProps) {
+  const { updateGroup } = useGroupStore();
   const { addToast } = useToastStore();
-  const { addGroup } = useGroupStore();
-  const { user } = useAuthStore();
   const [isLoading, setIsLoading] = useState(false);
 
   const [formData, setFormData] = useState({
@@ -26,43 +25,49 @@ export function CreateGroupModal({ isOpen, onClose }: CreateGroupModalProps) {
     start_date: '',
     end_date: '',
     location: '',
+    status: group.status,
   });
+
+  useEffect(() => {
+    if (group) {
+      setFormData({
+        name: group.name,
+        description: group.description || '',
+        category: group.category || 'other',
+        start_date: group.start_date || '',
+        end_date: group.end_date || '',
+        location: group.location || '',
+        status: group.status,
+      });
+    }
+  }, [group]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
 
     try {
-      addGroup({
+      updateGroup(group.id, {
         name: sanitizeInput(formData.name),
         description: sanitizeInput(formData.description),
         category: formData.category,
         start_date: formData.start_date || undefined,
         end_date: formData.end_date || undefined,
         location: sanitizeInput(formData.location),
+        status: formData.status,
       });
 
-      addToast('success', 'Group created successfully!');
+      addToast('success', 'Group updated successfully');
       onClose();
-      
-      // Reset form
-      setFormData({
-        name: '',
-        description: '',
-        category: 'other',
-        start_date: '',
-        end_date: '',
-        location: '',
-      });
     } catch (error) {
-      addToast('error', 'Failed to create group');
+      addToast('error', 'Failed to update group');
     } finally {
       setIsLoading(false);
     }
   };
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title="Create New Group" size="lg">
+    <Modal isOpen={isOpen} onClose={onClose} title="Edit Group" size="lg">
       <form onSubmit={handleSubmit}>
         <div className="space-y-4">
           <Input
@@ -125,6 +130,21 @@ export function CreateGroupModal({ isOpen, onClose }: CreateGroupModalProps) {
             onChange={(e) => setFormData({ ...formData, location: e.target.value })}
             placeholder="Where is this happening?"
           />
+
+          <div>
+            <label className="block text-sm font-medium mb-1.5">
+              Status
+            </label>
+            <select
+              value={formData.status}
+              onChange={(e) => setFormData({ ...formData, status: e.target.value as any })}
+              className="w-full px-3 py-2 border-2 border-black focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-black transition-all"
+            >
+              <option value="active">Active</option>
+              <option value="completed">Completed</option>
+              <option value="archived">Archived</option>
+            </select>
+          </div>
         </div>
 
         <ModalFooter className="mt-6">
@@ -132,7 +152,7 @@ export function CreateGroupModal({ isOpen, onClose }: CreateGroupModalProps) {
             Cancel
           </Button>
           <Button type="submit" isLoading={isLoading}>
-            Create Group
+            Save Changes
           </Button>
         </ModalFooter>
       </form>

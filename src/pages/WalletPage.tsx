@@ -1,62 +1,51 @@
 import { useState } from 'react';
 import { Wallet, ArrowUpRight, ArrowDownLeft, Lock, Clock, Plus } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import { AppLayout } from '../layouts/AppLayout';
 import { Card, CardHeader, CardTitle, CardContent } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
 import { Transaction, TransactionType } from '../types';
+import { useWalletStore } from '../stores/walletStore';
+import { useGroupStore } from '../stores/groupStore';
+import { formatCurrency } from '../utils/security';
 
 export function WalletPage() {
   const [selectedGroup, setSelectedGroup] = useState<string>('all');
+  const { groups } = useGroupStore();
+  const { getGroupWallet, getGroupTransactions } = useWalletStore();
 
-  // Mock wallet data
-  const walletStats = {
-    totalBalance: 45000,
-    escrowBalance: 15000,
-    pendingBalance: 5000,
+  // Calculate stats from real data
+  let walletStats = {
+    totalBalance: 0,
+    escrowBalance: 0,
+    pendingBalance: 0,
   };
 
-  // Mock transactions
-  const mockTransactions: Transaction[] = [
-    {
-      id: '1',
-      wallet_id: '1',
-      type: 'collection',
-      amount: 5000,
-      description: 'Conference venue advance payment',
-      status: 'completed',
-      payment_method: 'upi',
-      created_at: '2024-02-10T10:00:00Z',
-    },
-    {
-      id: '2',
-      wallet_id: '1',
-      type: 'escrow_lock',
-      amount: 15000,
-      description: 'Vendor booking - Catering service',
-      status: 'completed',
-      created_at: '2024-02-08T14:30:00Z',
-    },
-    {
-      id: '3',
-      wallet_id: '2',
-      type: 'payment',
-      amount: 8000,
-      description: 'Flight tickets payment',
-      status: 'completed',
-      payment_method: 'card',
-      created_at: '2024-02-05T09:15:00Z',
-    },
-    {
-      id: '4',
-      wallet_id: '1',
-      type: 'collection',
-      amount: 3000,
-      description: 'Member contribution - March',
-      status: 'pending',
-      created_at: '2024-02-12T16:45:00Z',
-    },
-  ];
+  let allTransactions: Transaction[] = [];
+
+  if (selectedGroup === 'all') {
+    groups.forEach((group) => {
+      const wallet = getGroupWallet(group.id);
+      if (wallet) {
+        walletStats.totalBalance += wallet.balance;
+        walletStats.escrowBalance += wallet.escrow_balance;
+        walletStats.pendingBalance += 0; // pending_balance not currently used
+      }
+      allTransactions = [...allTransactions, ...getGroupTransactions(group.id)];
+    });
+    allTransactions.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+  } else {
+    const wallet = getGroupWallet(selectedGroup);
+    if (wallet) {
+      walletStats = {
+        totalBalance: wallet.balance,
+        escrowBalance: wallet.escrow_balance,
+        pendingBalance: wallet.pending_balance,
+      };
+    }
+    allTransactions = getGroupTransactions(selectedGroup);
+  }
 
   const getTransactionIcon = (type: TransactionType) => {
     switch (type) {
@@ -78,6 +67,7 @@ export function WalletPage() {
       pending: 'warning',
       completed: 'success',
       failed: 'error',
+      refunded: 'default',
     };
     return <Badge variant={variants[status] || 'default'} size="sm">{status.toUpperCase()}</Badge>;
   };
@@ -93,10 +83,14 @@ export function WalletPage() {
               Manage your group finances
             </p>
           </div>
-          <Button>
-            <Plus size={20} className="mr-2" />
-            Collect Payment
-          </Button>
+          {groups.length > 0 && (
+            <Link to={`/groups/${groups[0].id}?tab=wallet`}>
+              <Button>
+                <Plus size={20} className="mr-2" />
+                Add Funds
+              </Button>
+            </Link>
+          )}
         </div>
 
         {/* Wallet Stats */}
@@ -109,7 +103,7 @@ export function WalletPage() {
                 </div>
                 <div>
                   <p className="text-sm text-nostalgic-600">Available Balance</p>
-                  <p className="text-2xl font-mono font-bold">₹{walletStats.totalBalance.toLocaleString()}</p>
+                  <p className="text-2xl font-mono font-bold">{formatCurrency(walletStats.totalBalance)}</p>
                 </div>
               </div>
             </CardContent>
@@ -123,7 +117,7 @@ export function WalletPage() {
                 </div>
                 <div>
                   <p className="text-sm text-nostalgic-600">Escrow Balance</p>
-                  <p className="text-2xl font-mono font-bold">₹{walletStats.escrowBalance.toLocaleString()}</p>
+                  <p className="text-2xl font-mono font-bold">{formatCurrency(walletStats.escrowBalance)}</p>
                 </div>
               </div>
             </CardContent>
@@ -137,7 +131,7 @@ export function WalletPage() {
                 </div>
                 <div>
                   <p className="text-sm text-nostalgic-600">Pending Amount</p>
-                  <p className="text-2xl font-mono font-bold">₹{walletStats.pendingBalance.toLocaleString()}</p>
+                  <p className="text-2xl font-mono font-bold">{formatCurrency(walletStats.pendingBalance)}</p>
                 </div>
               </div>
             </CardContent>
@@ -153,9 +147,9 @@ export function WalletPage() {
             className="px-4 py-2 border-2 border-black focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-black"
           >
             <option value="all">All Groups</option>
-            <option value="1">Tech Conference 2024</option>
-            <option value="2">Europe Trip Summer</option>
-            <option value="3">Photography Club</option>
+            {groups.map((group) => (
+              <option key={group.id} value={group.id}>{group.name}</option>
+            ))}
           </select>
         </div>
 
@@ -165,42 +159,52 @@ export function WalletPage() {
             <CardTitle>Transaction History</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="space-y-4">
-              {mockTransactions.map((transaction) => (
-                <div
-                  key={transaction.id}
-                  className="flex items-center justify-between p-4 border-2 border-nostalgic-200 hover:bg-nostalgic-50 transition-colors"
-                >
-                  <div className="flex items-start gap-4">
-                    <div className="p-2 bg-nostalgic-100 border border-nostalgic-400">
-                      {getTransactionIcon(transaction.type)}
-                    </div>
-                    <div>
-                      <p className="font-medium">{transaction.description}</p>
-                      <p className="text-sm text-nostalgic-600 mt-1">
-                        {new Date(transaction.created_at).toLocaleDateString()} at{' '}
-                        {new Date(transaction.created_at).toLocaleTimeString()}
-                      </p>
-                      <div className="mt-2">
-                        {getStatusBadge(transaction.status)}
+            {allTransactions.length > 0 ? (
+              <div className="space-y-4">
+                {allTransactions.map((transaction) => (
+                  <div
+                    key={transaction.id}
+                    className="flex items-center justify-between p-4 border-2 border-nostalgic-200 hover:bg-nostalgic-50 transition-colors"
+                  >
+                    <div className="flex items-start gap-4">
+                      <div className="p-2 bg-nostalgic-100 border border-nostalgic-400">
+                        {getTransactionIcon(transaction.type)}
+                      </div>
+                      <div>
+                        <p className="font-medium">{transaction.description}</p>
+                        <p className="text-sm text-nostalgic-600 mt-1">
+                          {new Date(transaction.created_at).toLocaleDateString()} at{' '}
+                          {new Date(transaction.created_at).toLocaleTimeString()}
+                        </p>
+                        <div className="mt-2">
+                          {getStatusBadge(transaction.status)}
+                        </div>
                       </div>
                     </div>
-                  </div>
-                  <div className="text-right">
-                    <p className={`text-lg font-mono font-bold ${
-                      transaction.type === 'collection' ? 'text-green-600' : 'text-red-600'
-                    }`}>
-                      {transaction.type === 'collection' ? '+' : '-'}₹{transaction.amount.toLocaleString()}
-                    </p>
-                    {transaction.payment_method && (
-                      <p className="text-sm text-nostalgic-600 mt-1 capitalize">
-                        {transaction.payment_method}
+                    <div className="text-right">
+                      <p className={`text-lg font-mono font-bold ${
+                        transaction.type === 'collection' ? 'text-green-600' : 'text-red-600'
+                      }`}>
+                        {transaction.type === 'collection' ? '+' : '-'}{formatCurrency(transaction.amount)}
                       </p>
-                    )}
+                      {transaction.payment_method && (
+                        <p className="text-sm text-nostalgic-600 mt-1 capitalize">
+                          {transaction.payment_method}
+                        </p>
+                      )}
+                    </div>
                   </div>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            ) : (
+              <div className="text-center py-12">
+                <Wallet size={48} className="mx-auto text-nostalgic-400 mb-4" />
+                <p className="text-lg font-medium mb-2">No transactions yet</p>
+                <p className="text-nostalgic-600">
+                  Add funds to your wallet to get started
+                </p>
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>
