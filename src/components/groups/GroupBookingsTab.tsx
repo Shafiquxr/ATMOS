@@ -73,7 +73,7 @@ export function GroupBookingsTab({ group }: GroupBookingsTabProps) {
 
       if (advanceNum > 0) {
         const escrowTransaction = lockEscrow(group.id, advanceNum, `Escrow for booking with ${vendors.find((v) => v.id === formData.vendor_id)?.name}`);
-        
+
         const updatedBookings = [...bookings, { ...newBooking, escrow_transaction_id: escrowTransaction.id }];
       }
 
@@ -143,7 +143,7 @@ export function GroupBookingsTab({ group }: GroupBookingsTabProps) {
               {bookings.map((booking) => {
                 const vendor = vendors.find((v) => v.id === booking.vendor_id);
                 const StatusIcon = statusIcons[booking.status];
-                
+
                 return (
                   <div
                     key={booking.id}
@@ -185,7 +185,7 @@ export function GroupBookingsTab({ group }: GroupBookingsTabProps) {
                       {booking.status === 'pending' && isOwner && (
                         <Button
                           size="sm"
-                          variant="success"
+                          variant="primary"
                           onClick={() => handleConfirmBooking(booking.id)}
                         >
                           Confirm

@@ -82,28 +82,28 @@ export function GroupReportsTab({ group }: GroupReportsTabProps) {
         <CardContent>
           <div className="flex flex-wrap gap-2">
             <Button
-              variant={selectedReport === 'summary' ? 'default' : 'outline'}
+              variant={selectedReport === 'summary' ? 'primary' : 'outline'}
               onClick={() => setSelectedReport('summary')}
             >
               <FileText size={18} className="mr-2" />
               Summary
             </Button>
             <Button
-              variant={selectedReport === 'financial' ? 'default' : 'outline'}
+              variant={selectedReport === 'financial' ? 'primary' : 'outline'}
               onClick={() => setSelectedReport('financial')}
             >
               <WalletIcon size={18} className="mr-2" />
               Financial
             </Button>
             <Button
-              variant={selectedReport === 'tasks' ? 'default' : 'outline'}
+              variant={selectedReport === 'tasks' ? 'primary' : 'outline'}
               onClick={() => setSelectedReport('tasks')}
             >
               <CheckCircle size={18} className="mr-2" />
               Tasks
             </Button>
             <Button
-              variant={selectedReport === 'bookings' ? 'default' : 'outline'}
+              variant={selectedReport === 'bookings' ? 'primary' : 'outline'}
               onClick={() => setSelectedReport('bookings')}
             >
               <Calendar size={18} className="mr-2" />
@@ -296,9 +296,8 @@ export function GroupReportsTab({ group }: GroupReportsTabProps) {
                             <Badge size="sm">{t.type.replace('_', ' ')}</Badge>
                           </td>
                           <td className="p-2">{t.description}</td>
-                          <td className={`p-2 text-right font-mono ${
-                            t.type === 'collection' ? 'text-green-600' : 'text-red-600'
-                          }`}>
+                          <td className={`p-2 text-right font-mono ${t.type === 'collection' ? 'text-green-600' : 'text-red-600'
+                            }`}>
                             {t.type === 'collection' ? '+' : '-'}{formatCurrency(t.amount)}
                           </td>
                           <td className="p-2 text-center">
