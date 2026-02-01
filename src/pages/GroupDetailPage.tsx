@@ -28,7 +28,7 @@ export function GroupDetailPage() {
   const { groupId } = useParams<{ groupId: string }>();
   const navigate = useNavigate();
   const { user } = useAuthStore();
-  const { groups, currentGroup, setCurrentGroup, deleteGroup } = useGroupStore();
+  const { groups, currentGroup, setCurrentGroup, deleteGroup, members } = useGroupStore();
   const { fetchGroupWallet: getGroupWallet, createGroupWallet } = useWalletStore();
   const { getGroupTasks } = useTaskStore();
   const { getGroupBookings } = useBookingStore();
@@ -37,8 +37,11 @@ export function GroupDetailPage() {
   const [activeTab, setActiveTab] = useState<TabType>('overview');
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [wallet, setWallet] = useState<any>(null);
+  const [isLoading, setIsLoading] = useState(true);
 
   const group = currentGroup?.id === groupId ? currentGroup : groups.find((g) => g.id === groupId);
+  const groupMembers = members.filter(m => m.group_id === group?.id);
 
   useEffect(() => {
     if (group && group.id !== currentGroup?.id) {
@@ -47,10 +50,26 @@ export function GroupDetailPage() {
   }, [group, currentGroup, setCurrentGroup]);
 
   useEffect(() => {
-    if (group) {
-      createGroupWallet(group.id);
-    }
-  }, [group, createGroupWallet]);
+    const loadGroupData = async () => {
+      if (!group) {
+        setIsLoading(false);
+        return;
+      }
+
+      try {
+        setIsLoading(true);
+        await createGroupWallet(group.id);
+        const groupWallet = await getGroupWallet(group.id);
+        setWallet(groupWallet);
+      } catch (error) {
+        console.error('Failed to load group data:', error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    loadGroupData();
+  }, [group, createGroupWallet, getGroupWallet]);
 
   if (!group) {
     return (
@@ -66,10 +85,8 @@ export function GroupDetailPage() {
     );
   }
 
-  const wallet = await getGroupWallet(group.id);
   const tasks = getGroupTasks(group.id);
   const bookings = getGroupBookings(group.id);
-  const groupMembers = useGroupStore((state) => state.members.filter(m => m.group_id === group.id));
 
   const isMember = group.owner_id === user?.id || groupMembers.some(m => m.user_id === user?.id || m.user_id === user?.email);
 

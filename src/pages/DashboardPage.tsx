@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom';
 import { Users, CheckSquare, Wallet as WalletIcon, Plus, AlertTriangle } from 'lucide-react';
+import { useEffect, useState } from 'react';
 import { AppLayout } from '../layouts/AppLayout';
 import { Card, CardHeader, CardTitle, CardContent } from '../components/ui/Card';
 import { Badge } from '../components/ui/Badge';
@@ -9,88 +10,154 @@ import { useGroupStore } from '../stores/groupStore';
 import { useTaskStore } from '../stores/taskStore';
 import { useWalletStore } from '../stores/walletStore';
 
+interface DashboardStats {
+  totalGroups: number;
+  pendingTasks: number;
+  totalBalance: number;
+}
+
+interface GroupAlert {
+  id: string;
+  type: 'info' | 'urgent';
+  message: string;
+  link: string;
+}
+
+interface RecentGroup {
+  id: string;
+  name: string;
+  role: string;
+  members: number;
+  balance: number;
+  pendingTasks: number;
+  overdueTasks: number;
+}
+
 export function DashboardPage() {
   const { user } = useAuthStore();
   const { groups, members } = useGroupStore();
   const { getGroupTasks } = useTaskStore();
   const { getGroupWallet } = useWalletStore();
+  
+  const [stats, setStats] = useState<DashboardStats>({
+    totalGroups: 0,
+    pendingTasks: 0,
+    totalBalance: 0,
+  });
+  
+  const [alerts, setAlerts] = useState<GroupAlert[]>([]);
+  const [recentGroups, setRecentGroups] = useState<RecentGroup[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
 
   const userGroups = groups.filter((group) => 
     group.owner_id === user?.id || 
     members.some((m) => m.group_id === group.id && (m.user_id === user?.id || m.user_id === user?.email))
   );
 
-  // Calculate stats from real data
-  const totalBalance = userGroups.reduce((sum, group) => {
-    const wallet = await getGroupWallet(group.id);
-    return sum + (wallet?.balance || 0);
-  }, 0);
+  useEffect(() => {
+    const loadDashboardData = async () => {
+      if (!userGroups.length) {
+        setStats({
+          totalGroups: 0,
+          pendingTasks: 0,
+          totalBalance: 0,
+        });
+        setAlerts([]);
+        setRecentGroups([]);
+        setIsLoading(false);
+        return;
+      }
 
-  const totalTasks = userGroups.reduce((sum, group) => {
-    const tasks = getGroupTasks(group.id);
-    return sum + tasks.length;
-  }, 0);
+      try {
+        setIsLoading(true);
+        
+        // Load wallet data for all groups
+        const walletPromises = userGroups.map(group => getGroupWallet(group.id));
+        const wallets = await Promise.all(walletPromises);
+        
+        // Calculate stats
+        let totalBalance = 0;
+        let totalTasks = 0;
+        let pendingTasksCount = 0;
+        
+        userGroups.forEach((group, index) => {
+          const wallet = wallets[index];
+          const tasks = getGroupTasks(group.id);
+          
+          totalBalance += wallet?.balance || 0;
+          totalTasks += tasks.length;
+          pendingTasksCount += tasks.filter((t) => t.status !== 'completed').length;
+        });
 
-  const pendingTasksCount = userGroups.reduce((sum, group) => {
-    const tasks = getGroupTasks(group.id);
-    return sum + tasks.filter((t) => t.status !== 'completed').length;
-  }, 0);
+        setStats({
+          totalGroups: userGroups.length,
+          pendingTasks: pendingTasksCount,
+          totalBalance,
+        });
 
-  const stats = {
-    totalGroups: userGroups.length,
-    pendingTasks: pendingTasksCount,
-    totalBalance,
-  };
+        // Generate alerts
+        const newAlerts: GroupAlert[] = [];
+        userGroups.forEach((group, index) => {
+          const tasks = getGroupTasks(group.id);
+          const wallet = wallets[index];
+          const overdueTasks = tasks.filter((t) =>
+            t.status !== 'completed' && t.deadline && new Date(t.deadline) < new Date()
+          );
 
-  // Generate alerts based on real data
-  const alerts: Array<{ id: string; type: 'info' | 'urgent'; message: string; link: string }> = [];
-  userGroups.forEach((group) => {
-    const tasks = getGroupTasks(group.id);
-    const wallet = await getGroupWallet(group.id);
-    const overdueTasks = tasks.filter((t) =>
-      t.status !== 'completed' && t.deadline && new Date(t.deadline) < new Date()
-    );
+          if (wallet?.balance && wallet.balance > 0) {
+            newAlerts.push({
+              id: `wallet-${group.id}`,
+              type: 'info',
+              message: `${group.name}: ₹${wallet.balance.toLocaleString()} available in wallet`,
+              link: `/groups/${group.id}/wallet`,
+            });
+          }
 
-    if (wallet?.balance && wallet.balance > 0) {
-      alerts.push({
-        id: `wallet-${group.id}`,
-        type: 'info' as const,
-        message: `${group.name}: ₹${wallet.balance.toLocaleString()} available in wallet`,
-        link: `/groups/${group.id}/wallet`,
-      });
-    }
+          if (overdueTasks.length > 0) {
+            newAlerts.push({
+              id: `tasks-${group.id}`,
+              type: 'urgent',
+              message: `${group.name}: ${overdueTasks.length} overdue task${overdueTasks.length > 1 ? 's' : ''}`,
+              link: `/groups/${group.id}/tasks`,
+            });
+          }
+        });
 
-    if (overdueTasks.length > 0) {
-      alerts.push({
-        id: `tasks-${group.id}`,
-        type: 'urgent' as const,
-        message: `${group.name}: ${overdueTasks.length} overdue task${overdueTasks.length > 1 ? 's' : ''}`,
-        link: `/groups/${group.id}/tasks`,
-      });
-    }
-  });
+        setAlerts(newAlerts);
 
-  const recentGroups = userGroups.slice(0, 3).map((group) => {
-    const tasks = getGroupTasks(group.id);
-    const wallet = await getGroupWallet(group.id);
-    const pendingTasksCount = tasks.filter((t) => t.status !== 'completed').length;
-    const overdueTasks = tasks.filter((t) => 
-      t.status !== 'completed' && t.deadline && new Date(t.deadline) < new Date()
-    ).length;
-    
-    const groupMembers = members.filter(m => m.group_id === group.id);
-    const userMember = groupMembers.find(m => m.user_id === user?.id || m.user_id === user?.email);
+        // Prepare recent groups data
+        const groupsData = userGroups.slice(0, 3).map((group, index) => {
+          const tasks = getGroupTasks(group.id);
+          const wallet = wallets[index];
+          const pendingTasksCount = tasks.filter((t) => t.status !== 'completed').length;
+          const overdueTasks = tasks.filter((t) => 
+            t.status !== 'completed' && t.deadline && new Date(t.deadline) < new Date()
+          ).length;
+          
+          const groupMembers = members.filter(m => m.group_id === group.id);
+          const userMember = groupMembers.find(m => m.user_id === user?.id || m.user_id === user?.email);
 
-    return {
-      id: group.id,
-      name: group.name,
-      role: userMember?.role || (group.owner_id === user?.id ? 'owner' : 'member'),
-      members: groupMembers.length,
-      balance: wallet?.balance || 0,
-      pendingTasks: pendingTasksCount,
-      overdueTasks,
+          return {
+            id: group.id,
+            name: group.name,
+            role: userMember?.role || (group.owner_id === user?.id ? 'owner' : 'member'),
+            members: groupMembers.length,
+            balance: wallet?.balance || 0,
+            pendingTasks: pendingTasksCount,
+            overdueTasks,
+          };
+        });
+
+        setRecentGroups(groupsData);
+      } catch (error) {
+        console.error('Failed to load dashboard data:', error);
+      } finally {
+        setIsLoading(false);
+      }
     };
-  });
+
+    loadDashboardData();
+  }, [user, groups, members, getGroupTasks, getGroupWallet]);
 
   return (
     <AppLayout>

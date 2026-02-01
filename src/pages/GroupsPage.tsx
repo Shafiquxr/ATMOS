@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Plus, Search, Filter } from 'lucide-react';
 import { AppLayout } from '../layouts/AppLayout';
 import { Button } from '../components/ui/Button';
@@ -9,6 +9,15 @@ import { useAuthStore } from '../stores/authStore';
 import { useTaskStore } from '../stores/taskStore';
 import { useWalletStore } from '../stores/walletStore';
 
+interface GroupWithStats {
+  group: any;
+  tasks: any[];
+  wallet: any;
+  pendingTasks: number;
+  memberCount: number;
+  userRole: string;
+}
+
 export function GroupsPage() {
   const { groups, members } = useGroupStore();
   const { user } = useAuthStore();
@@ -17,13 +26,65 @@ export function GroupsPage() {
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [filterStatus, setFilterStatus] = useState<'all' | 'active' | 'completed' | 'archived'>('all');
+  const [groupsWithStats, setGroupsWithStats] = useState<GroupWithStats[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
 
   const userGroups = groups.filter((group) => 
     group.owner_id === user?.id || 
     members.some((m) => m.group_id === group.id && (m.user_id === user?.id || m.user_id === user?.email))
   );
 
-  const filteredGroups = userGroups.filter((group) => {
+  useEffect(() => {
+    const loadGroupsData = async () => {
+      if (!userGroups.length) {
+        setGroupsWithStats([]);
+        setIsLoading(false);
+        return;
+      }
+
+      try {
+        setIsLoading(true);
+        
+        // Load wallet data for all groups
+        const walletPromises = userGroups.map(group => getGroupWallet(group.id));
+        const wallets = await Promise.all(walletPromises);
+        
+        // Process each group with its data
+        const groupsData = userGroups.map((group, index) => {
+          const tasks = getGroupTasks(group.id);
+          const wallet = wallets[index];
+          const pendingTasks = tasks.filter((t) => t.status !== 'completed').length;
+          
+          const groupMembers = members.filter((m) => m.group_id === group.id);
+          const memberCount = groupMembers.length;
+          const userMember = groupMembers.find(
+            (m) => m.user_id === user?.id || m.user_id === user?.email
+          );
+          const userRole = userMember?.role || (group.owner_id === user?.id ? 'owner' : 'member');
+
+          return {
+            group,
+            tasks,
+            wallet,
+            pendingTasks,
+            memberCount,
+            userRole,
+          };
+        });
+
+        setGroupsWithStats(groupsData);
+      } catch (error) {
+        console.error('Failed to load groups data:', error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    loadGroupsData();
+  }, [user, groups, members, getGroupTasks, getGroupWallet]);
+
+  const filteredGroups = groupsWithStats.filter((groupData) => {
+    const group = groupData.group;
     const matchesSearch = group.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
                          group.description?.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesFilter = filterStatus === 'all' || group.status === filterStatus;
@@ -78,31 +139,28 @@ export function GroupsPage() {
         </div>
 
         {/* Groups Grid */}
-        {filteredGroups.length > 0 ? (
+        {isLoading ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {filteredGroups.map((group) => {
-              const tasks = getGroupTasks(group.id);
-              const wallet = await getGroupWallet(group.id);
-              const pendingTasks = tasks.filter((t) => t.status !== 'completed').length;
-              
-              const groupMembers = members.filter((m) => m.group_id === group.id);
-              const memberCount = groupMembers.length;
-              const userMember = groupMembers.find(
-                (m) => m.user_id === user?.id || m.user_id === user?.email
-              );
-              const userRole = userMember?.role || (group.owner_id === user?.id ? 'owner' : 'member');
-
-              return (
-                <GroupCard
-                  key={group.id}
-                  group={group}
-                  memberCount={memberCount}
-                  balance={wallet?.balance || 0}
-                  pendingTasks={pendingTasks}
-                  userRole={userRole}
-                />
-              );
-            })}
+            {[1, 2, 3].map((i) => (
+              <div key={i} className="p-6 border-2 border-black bg-white animate-pulse">
+                <div className="h-6 bg-gray-300 mb-4"></div>
+                <div className="h-4 bg-gray-200 mb-2"></div>
+                <div className="h-4 bg-gray-200 w-2/3"></div>
+              </div>
+            ))}
+          </div>
+        ) : filteredGroups.length > 0 ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {filteredGroups.map((groupData) => (
+              <GroupCard
+                key={groupData.group.id}
+                group={groupData.group}
+                memberCount={groupData.memberCount}
+                balance={groupData.wallet?.balance || 0}
+                pendingTasks={groupData.pendingTasks}
+                userRole={groupData.userRole}
+              />
+            ))}
           </div>
         ) : (
           <div className="text-center py-12">
