@@ -8,6 +8,7 @@ import { Badge } from '../components/ui/Badge';
 import { Transaction, TransactionType } from '../types';
 import { useWalletStore } from '../stores/walletStore';
 import { useGroupStore } from '../stores/groupStore';
+import { useAuthStore } from '../stores/authStore';
 import { formatCurrency } from '../utils/security';
 
 export function WalletPage() {
