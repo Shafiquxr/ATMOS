@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Plus, ArrowUpRight, ArrowDownLeft, Lock, Clock, Wallet as WalletIcon } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent } from '../ui/Card';
 import { Button } from '../ui/Button';
@@ -27,9 +27,28 @@ export function GroupWalletTab({ group }: GroupWalletTabProps) {
   const [amount, setAmount] = useState('');
   const [description, setDescription] = useState('');
   const [vendorId, setVendorId] = useState('');
+  const [wallet, setWallet] = useState<any>(null);
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
 
-  const wallet = await getGroupWallet(group.id);
-  const transactions = getGroupTransactions(group.id);
+  useEffect(() => {
+    const loadWalletData = async () => {
+      try {
+        setIsLoading(true);
+        const groupWallet = await getGroupWallet(group.id);
+        const groupTransactions = getGroupTransactions(group.id);
+        
+        setWallet(groupWallet);
+        setTransactions(groupTransactions);
+      } catch (error) {
+        console.error('Failed to load wallet data:', error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    loadWalletData();
+  }, [group, getGroupWallet, getGroupTransactions]);
 
   const handleAddFunds = async (e: React.FormEvent) => {
     e.preventDefault();

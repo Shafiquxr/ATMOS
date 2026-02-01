@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Wallet, ArrowUpRight, ArrowDownLeft, Lock, Clock, Plus } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { AppLayout } from '../layouts/AppLayout';
@@ -11,8 +11,22 @@ import { useGroupStore } from '../stores/groupStore';
 import { useAuthStore } from '../stores/authStore';
 import { formatCurrency } from '../utils/security';
 
+interface WalletStats {
+  totalBalance: number;
+  escrowBalance: number;
+  pendingBalance: number;
+}
+
 export function WalletPage() {
   const [selectedGroup, setSelectedGroup] = useState<string>('all');
+  const [walletStats, setWalletStats] = useState<WalletStats>({
+    totalBalance: 0,
+    escrowBalance: 0,
+    pendingBalance: 0,
+  });
+  const [allTransactions, setAllTransactions] = useState<Transaction[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  
   const { groups, members } = useGroupStore();
   const { user } = useAuthStore();
   const { fetchGroupWallet: getGroupWallet, getGroupTransactions } = useWalletStore();
@@ -22,37 +36,71 @@ export function WalletPage() {
     members.some((m) => m.group_id === group.id && (m.user_id === user?.id || m.user_id === user?.email))
   );
 
-  // Calculate stats from real data
-  let walletStats = {
-    totalBalance: 0,
-    escrowBalance: 0,
-    pendingBalance: 0,
-  };
-
-  let allTransactions: Transaction[] = [];
-
-  if (selectedGroup === 'all') {
-    userGroups.forEach((group) => {
-      const wallet = await getGroupWallet(group.id);
-      if (wallet) {
-        walletStats.totalBalance += wallet.balance;
-        walletStats.escrowBalance += wallet.escrow_balance;
-        walletStats.pendingBalance += 0; // pending_balance not currently used
+  useEffect(() => {
+    const loadWalletData = async () => {
+      if (!userGroups.length) {
+        setWalletStats({
+          totalBalance: 0,
+          escrowBalance: 0,
+          pendingBalance: 0,
+        });
+        setAllTransactions([]);
+        setIsLoading(false);
+        return;
       }
-      allTransactions = [...allTransactions, ...getGroupTransactions(group.id)];
-    });
-    allTransactions.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
-  } else {
-    const wallet = await getGroupWallet(selectedGroup);
-    if (wallet) {
-      walletStats = {
-        totalBalance: wallet.balance,
-        escrowBalance: wallet.escrow_balance,
-        pendingBalance: wallet.pending_balance,
-      };
-    }
-    allTransactions = getGroupTransactions(selectedGroup);
-  }
+
+      try {
+        setIsLoading(true);
+        
+        let newStats: WalletStats = {
+          totalBalance: 0,
+          escrowBalance: 0,
+          pendingBalance: 0,
+        };
+
+        let transactions: Transaction[] = [];
+
+        if (selectedGroup === 'all') {
+          // Load wallet data for all groups
+          const walletPromises = userGroups.map(group => getGroupWallet(group.id));
+          const wallets = await Promise.all(walletPromises);
+          
+          userGroups.forEach((group, index) => {
+            const wallet = wallets[index];
+            if (wallet) {
+              newStats.totalBalance += wallet.balance || 0;
+              newStats.escrowBalance += wallet.escrow_balance || 0;
+              newStats.pendingBalance += wallet.pending_balance || 0;
+            }
+            transactions = [...transactions, ...getGroupTransactions(group.id)];
+          });
+        } else {
+          // Load wallet data for specific group
+          const wallet = await getGroupWallet(selectedGroup);
+          if (wallet) {
+            newStats = {
+              totalBalance: wallet.balance || 0,
+              escrowBalance: wallet.escrow_balance || 0,
+              pendingBalance: wallet.pending_balance || 0,
+            };
+          }
+          transactions = getGroupTransactions(selectedGroup);
+        }
+
+        // Sort transactions by date
+        transactions.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+
+        setWalletStats(newStats);
+        setAllTransactions(transactions);
+      } catch (error) {
+        console.error('Failed to load wallet data:', error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    loadWalletData();
+  }, [selectedGroup, userGroups, getGroupWallet, getGroupTransactions]);
 
   const getTransactionIcon = (type: TransactionType) => {
     switch (type) {

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { FileText, Download, TrendingUp, CheckCircle, Wallet as WalletIcon, Calendar, Users } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent } from '../ui/Card';
 import { Button } from '../ui/Button';
@@ -14,6 +14,18 @@ interface GroupReportsTabProps {
   group: Group;
 }
 
+interface ReportData {
+  members: any[];
+  tasks: any[];
+  wallet: any;
+  transactions: any[];
+  bookings: any[];
+  completedTasks: any[];
+  pendingTasks: any[];
+  confirmedBookings: any[];
+  totalBookingAmount: number;
+}
+
 export function GroupReportsTab({ group }: GroupReportsTabProps) {
   const { getGroupMembers } = useGroupStore();
   const { getGroupTasks } = useTaskStore();
@@ -21,17 +33,61 @@ export function GroupReportsTab({ group }: GroupReportsTabProps) {
   const { getGroupBookings } = useBookingStore();
 
   const [selectedReport, setSelectedReport] = useState<string>('summary');
+  const [reportData, setReportData] = useState<ReportData | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
 
-  const members = getGroupMembers(group.id);
-  const tasks = getGroupTasks(group.id);
-  const wallet = await getGroupWallet(group.id);
-  const transactions = getGroupTransactions(group.id);
-  const bookings = getGroupBookings(group.id);
+  useEffect(() => {
+    const loadReportData = async () => {
+      try {
+        setIsLoading(true);
+        
+        const members = getGroupMembers(group.id);
+        const tasks = getGroupTasks(group.id);
+        const wallet = await getGroupWallet(group.id);
+        const transactions = getGroupTransactions(group.id);
+        const bookings = getGroupBookings(group.id);
 
-  const completedTasks = tasks.filter((t) => t.status === 'completed');
-  const pendingTasks = tasks.filter((t) => t.status !== 'completed');
-  const confirmedBookings = bookings.filter((b) => b.status === 'confirmed');
-  const totalBookingAmount = bookings.reduce((sum, b) => sum + b.amount, 0);
+        const completedTasks = tasks.filter((t) => t.status === 'completed');
+        const pendingTasks = tasks.filter((t) => t.status !== 'completed');
+        const confirmedBookings = bookings.filter((b) => b.status === 'confirmed');
+        const totalBookingAmount = bookings.reduce((sum, b) => sum + b.amount, 0);
+
+        setReportData({
+          members,
+          tasks,
+          wallet,
+          transactions,
+          bookings,
+          completedTasks,
+          pendingTasks,
+          confirmedBookings,
+          totalBookingAmount,
+        });
+      } catch (error) {
+        console.error('Failed to load report data:', error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    loadReportData();
+  }, [group, getGroupMembers, getGroupTasks, getGroupWallet, getGroupTransactions, getGroupBookings]);
+
+  if (isLoading || !reportData) {
+    return (
+      <div className="p-6">
+        <div className="animate-pulse space-y-4">
+          <div className="h-4 bg-gray-300 rounded w-1/4"></div>
+          <div className="space-y-2">
+            <div className="h-4 bg-gray-200 rounded"></div>
+            <div className="h-4 bg-gray-200 rounded w-5/6"></div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  const { members, tasks, wallet, transactions, bookings, completedTasks, pendingTasks, confirmedBookings, totalBookingAmount } = reportData;
 
   const handleExportReport = (reportType: string) => {
     let csvContent = '';
