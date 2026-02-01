@@ -234,3 +234,15 @@ export const useGroupStore = create<GroupState>((set, get) => ({
     }
   },
 }));
+
+// Listen for storage events to sync across tabs
+window.addEventListener('storage', (event) => {
+  if (
+    event.key === GROUPS_STORAGE_KEY ||
+    event.key === MEMBERS_STORAGE_KEY ||
+    event.key === SUBGROUPS_STORAGE_KEY ||
+    event.key === CURRENT_GROUP_KEY
+  ) {
+    useGroupStore.getState().loadFromStorage();
+  }
+});

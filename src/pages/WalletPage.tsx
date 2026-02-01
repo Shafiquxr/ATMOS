@@ -12,8 +12,14 @@ import { formatCurrency } from '../utils/security';
 
 export function WalletPage() {
   const [selectedGroup, setSelectedGroup] = useState<string>('all');
-  const { groups } = useGroupStore();
+  const { groups, members } = useGroupStore();
+  const { user } = useAuthStore();
   const { getGroupWallet, getGroupTransactions } = useWalletStore();
+
+  const userGroups = groups.filter((group) => 
+    group.owner_id === user?.id || 
+    members.some((m) => m.group_id === group.id && (m.user_id === user?.id || m.user_id === user?.email))
+  );
 
   // Calculate stats from real data
   let walletStats = {
@@ -25,7 +31,7 @@ export function WalletPage() {
   let allTransactions: Transaction[] = [];
 
   if (selectedGroup === 'all') {
-    groups.forEach((group) => {
+    userGroups.forEach((group) => {
       const wallet = getGroupWallet(group.id);
       if (wallet) {
         walletStats.totalBalance += wallet.balance;
@@ -83,8 +89,8 @@ export function WalletPage() {
               Manage your group finances
             </p>
           </div>
-          {groups.length > 0 && (
-            <Link to={`/groups/${groups[0].id}?tab=wallet`}>
+          {userGroups.length > 0 && (
+            <Link to={`/groups/${userGroups[0].id}?tab=wallet`}>
               <Button>
                 <Plus size={20} className="mr-2" />
                 Add Funds
@@ -147,7 +153,7 @@ export function WalletPage() {
             className="px-4 py-2 border-2 border-black focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-black"
           >
             <option value="all">All Groups</option>
-            {groups.map((group) => (
+            {userGroups.map((group) => (
               <option key={group.id} value={group.id}>{group.name}</option>
             ))}
           </select>

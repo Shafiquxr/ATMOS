@@ -39,6 +39,7 @@ export interface GroupMember {
   role: UserRole;
   joined_at: string;
   user?: User;
+  contact_info?: string;
 }
 
 export interface SubGroup {

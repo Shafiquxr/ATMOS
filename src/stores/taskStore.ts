@@ -174,3 +174,14 @@ export const useTaskStore = create<TaskState>((set, get) => ({
     storageSet(ATTACHMENTS_STORAGE_KEY, attachments);
   },
 }));
+
+// Listen for storage events to sync across tabs
+window.addEventListener('storage', (event) => {
+  if (
+    event.key === TASKS_STORAGE_KEY ||
+    event.key === COMMENTS_STORAGE_KEY ||
+    event.key === ATTACHMENTS_STORAGE_KEY
+  ) {
+    useTaskStore.getState().loadFromStorage();
+  }
+});

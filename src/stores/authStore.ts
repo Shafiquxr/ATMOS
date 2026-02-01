@@ -148,4 +148,11 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   },
 }));
 
+// Listen for storage events to sync across tabs
+window.addEventListener('storage', (event) => {
+  if (event.key === AUTH_STORAGE_KEY || event.key === USERS_STORAGE_KEY) {
+    useAuthStore.getState().loadFromStorage();
+  }
+});
+
 useAuthStore.getState().loadFromStorage();

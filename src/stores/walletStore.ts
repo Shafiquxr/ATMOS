@@ -352,3 +352,15 @@ export const useWalletStore = create<WalletState>((set, get) => ({
     storageSet(PAYMENT_MEMBERS_STORAGE_KEY, paymentRequestMembers);
   },
 }));
+
+// Listen for storage events to sync across tabs
+window.addEventListener('storage', (event) => {
+  if (
+    event.key === WALLETS_STORAGE_KEY ||
+    event.key === TRANSACTIONS_STORAGE_KEY ||
+    event.key === PAYMENT_REQUESTS_STORAGE_KEY ||
+    event.key === PAYMENT_MEMBERS_STORAGE_KEY
+  ) {
+    useWalletStore.getState().loadFromStorage();
+  }
+});
