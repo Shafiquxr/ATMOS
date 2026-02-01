@@ -21,7 +21,7 @@ export function GroupBookingsTab({ group }: GroupBookingsTabProps) {
   const { user } = useAuthStore();
   const { vendors } = useVendorStore();
   const { getGroupBookings, addBooking, cancelBooking, confirmBooking } = useBookingStore();
-  const { getGroupWallet, lockEscrow, releaseEscrow } = useWalletStore();
+  const { fetchGroupWallet: getGroupWallet, lockEscrow, releaseEscrow } = useWalletStore();
   const { addToast } = useToastStore();
 
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
@@ -55,7 +55,7 @@ export function GroupBookingsTab({ group }: GroupBookingsTabProps) {
     }
 
     try {
-      const wallet = getGroupWallet(group.id);
+      const wallet = await getGroupWallet(group.id);
       if (!wallet || wallet.balance < advanceNum) {
         addToast('error', 'Insufficient wallet balance for advance payment');
         return;
@@ -72,7 +72,7 @@ export function GroupBookingsTab({ group }: GroupBookingsTabProps) {
       });
 
       if (advanceNum > 0) {
-        const escrowTransaction = lockEscrow(group.id, advanceNum, `Escrow for booking with ${vendors.find((v) => v.id === formData.vendor_id)?.name}`);
+        const escrowTransaction = await lockEscrow(group.id, advanceNum, `Escrow for booking with ${vendors.find((v) => v.id === formData.vendor_id)?.name}`);
 
         const updatedBookings = [...bookings, { ...newBooking, escrow_transaction_id: escrowTransaction.id }];
       }

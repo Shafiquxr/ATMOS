@@ -1,13 +1,8 @@
 import { create } from 'zustand';
 import { Wallet, Transaction, PaymentRequest, PaymentRequestMember } from '../types';
-import { storageGet, storageSet } from '../utils/storage';
+import { supabase } from '../utils/supabase';
 import { generateUniqueId } from '../utils/idGenerator';
 import { validateAmount } from '../utils/security';
-
-const WALLETS_STORAGE_KEY = 'atmos_wallets';
-const TRANSACTIONS_STORAGE_KEY = 'atmos_transactions';
-const PAYMENT_REQUESTS_STORAGE_KEY = 'atmos_payment_requests';
-const PAYMENT_MEMBERS_STORAGE_KEY = 'atmos_payment_request_members';
 
 interface WalletState {
   wallets: Wallet[];
@@ -16,351 +11,612 @@ interface WalletState {
   paymentRequestMembers: PaymentRequestMember[];
   isLoading: boolean;
   
-  getGroupWallet: (groupId: string) => Wallet | undefined;
-  createGroupWallet: (groupId: string) => Wallet;
+  getGroupWallet: (groupId: string) => Promise<Wallet | undefined>;
+  fetchGroupWallet: (groupId: string) => Promise<Wallet | undefined>;
+  createGroupWallet: (groupId: string) => Promise<Wallet>;
   
-  addTransaction: (transaction: Omit<Transaction, 'id' | 'created_at'>) => Transaction;
+  fetchWalletTransactions: (walletId: string) => Promise<void>;
+  fetchGroupTransactions: (groupId: string) => Promise<void>;
+  addTransaction: (transaction: Omit<Transaction, 'id' | 'created_at'>) => Promise<Transaction>;
   getWalletTransactions: (walletId: string) => Transaction[];
   getGroupTransactions: (groupId: string) => Transaction[];
   
-  addFunds: (groupId: string, amount: number, description: string, userId: string) => Transaction;
-  makePayment: (groupId: string, amount: number, description: string, userId: string, vendorId?: string) => Transaction;
-  lockEscrow: (groupId: string, amount: number, description: string) => Transaction;
-  releaseEscrow: (groupId: string, transactionId: string) => Transaction;
+  addFunds: (groupId: string, amount: number, description: string, userId: string) => Promise<Transaction>;
+  makePayment: (groupId: string, amount: number, description: string, userId: string, vendorId?: string) => Promise<Transaction>;
+  lockEscrow: (groupId: string, amount: number, description: string) => Promise<Transaction>;
+  releaseEscrow: (groupId: string, transactionId: string) => Promise<Transaction>;
   
-  createPaymentRequest: (request: Omit<PaymentRequest, 'id' | 'status' | 'created_at'>) => PaymentRequest;
-  addPaymentRequestMember: (member: Omit<PaymentRequestMember, 'id' | 'status' | 'paid_at'>) => PaymentRequestMember;
-  markMemberPaid: (requestMemberId: string) => void;
-  approvePaymentRequest: (requestId: string, approverId: string) => void;
-  rejectPaymentRequest: (requestId: string) => void;
+  fetchPaymentRequests: (groupId: string) => Promise<void>;
+  createPaymentRequest: (request: Omit<PaymentRequest, 'id' | 'status' | 'created_at'>) => Promise<PaymentRequest>;
+  addPaymentRequestMember: (member: Omit<PaymentRequestMember, 'id' | 'status' | 'paid_at'>) => Promise<PaymentRequestMember>;
+  markMemberPaid: (requestMemberId: string) => Promise<void>;
+  approvePaymentRequest: (requestId: string, approverId: string) => Promise<void>;
+  rejectPaymentRequest: (requestId: string) => Promise<void>;
   getGroupPaymentRequests: (groupId: string) => PaymentRequest[];
-  
-  loadFromStorage: () => void;
-  saveToStorage: () => void;
 }
 
-const loadWalletsFromStorage = (): Wallet[] => {
-  return storageGet<Wallet[]>(WALLETS_STORAGE_KEY, []);
-};
-
-const loadTransactionsFromStorage = (): Transaction[] => {
-  return storageGet<Transaction[]>(TRANSACTIONS_STORAGE_KEY, []);
-};
-
-const loadPaymentRequestsFromStorage = (): PaymentRequest[] => {
-  return storageGet<PaymentRequest[]>(PAYMENT_REQUESTS_STORAGE_KEY, []);
-};
-
-const loadPaymentMembersFromStorage = (): PaymentRequestMember[] => {
-  return storageGet<PaymentRequestMember[]>(PAYMENT_MEMBERS_STORAGE_KEY, []);
-};
-
 export const useWalletStore = create<WalletState>((set, get) => ({
-  wallets: loadWalletsFromStorage(),
-  transactions: loadTransactionsFromStorage(),
-  paymentRequests: loadPaymentRequestsFromStorage(),
-  paymentRequestMembers: loadPaymentMembersFromStorage(),
+  wallets: [],
+  transactions: [],
+  paymentRequests: [],
+  paymentRequestMembers: [],
   isLoading: false,
 
-  getGroupWallet: (groupId) => {
-    return get().wallets.find((w) => w.group_id === groupId);
+  getGroupWallet: async (groupId: string) => {
+    return get().fetchGroupWallet(groupId);
   },
 
-  createGroupWallet: (groupId) => {
-    const existingWallet = get().getGroupWallet(groupId);
-    if (existingWallet) return existingWallet;
+  fetchGroupWallet: async (groupId: string) => {
+    set({ isLoading: true });
+    try {
+      const { data: wallet, error } = await supabase
+        .from('wallets')
+        .select('*')
+        .eq('group_id', groupId)
+        .single();
 
-    const newWallet: Wallet = {
-      id: generateUniqueId(),
-      group_id: groupId,
-      balance: 0,
-      escrow_balance: 0,
-      pending_balance: 0,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    };
+      if (error && error.code !== 'PGRST116') throw error;
 
-    const updatedWallets = [...get().wallets, newWallet];
-    set({ wallets: updatedWallets });
-    storageSet(WALLETS_STORAGE_KEY, updatedWallets);
+      const typedWallet: Wallet | undefined = wallet ? {
+        id: wallet.id,
+        group_id: wallet.group_id,
+        balance: wallet.balance,
+        escrow_balance: wallet.escrow_balance,
+        pending_balance: wallet.pending_balance,
+        created_at: wallet.created_at,
+        updated_at: wallet.updated_at,
+      } : undefined;
 
-    return newWallet;
+      if (typedWallet) {
+        set((state) => ({
+          wallets: state.wallets.find(w => w.id === typedWallet.id)
+            ? state.wallets.map(w => w.id === typedWallet.id ? typedWallet : w)
+            : [...state.wallets, typedWallet],
+        }));
+      }
+
+      return typedWallet;
+    } catch (error) {
+      console.error('Failed to fetch wallet:', error);
+      throw error;
+    } finally {
+      set({ isLoading: false });
+    }
   },
 
-  addTransaction: (transactionData) => {
-    const newTransaction: Transaction = {
-      id: generateUniqueId(),
-      ...transactionData,
-      created_at: new Date().toISOString(),
-    };
+  createGroupWallet: async (groupId: string) => {
+    set({ isLoading: true });
+    try {
+      const newWallet = {
+        id: generateUniqueId(),
+        group_id: groupId,
+        balance: 0,
+        escrow_balance: 0,
+        pending_balance: 0,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
 
-    const updatedTransactions = [...get().transactions, newTransaction];
-    set({ transactions: updatedTransactions });
-    storageSet(TRANSACTIONS_STORAGE_KEY, updatedTransactions);
+      const { error } = await supabase
+        .from('wallets')
+        .insert([newWallet]);
 
-    return newTransaction;
+      if (error) throw error;
+
+      const typedWallet: Wallet = newWallet as Wallet;
+
+      set((state) => ({
+        wallets: [...state.wallets, typedWallet],
+      }));
+
+      return typedWallet;
+    } catch (error) {
+      console.error('Failed to create wallet:', error);
+      throw error;
+    } finally {
+      set({ isLoading: false });
+    }
+  },
+
+  fetchWalletTransactions: async (walletId: string) => {
+    set({ isLoading: true });
+    try {
+      const { data: transactions, error } = await supabase
+        .from('transactions')
+        .select(`
+          *,
+          from_user:users!transactions_from_user_id_fkey(*),
+          to_user:users!transactions_to_user_id_fkey(*)
+        `)
+        .eq('wallet_id', walletId);
+
+      if (error) throw error;
+
+      const typedTransactions: Transaction[] = (transactions || []).map(t => ({
+        id: t.id,
+        wallet_id: t.wallet_id,
+        type: t.type,
+        amount: t.amount,
+        from_user_id: t.from_user_id,
+        to_user_id: t.to_user_id,
+        vendor_id: t.vendor_id,
+        description: t.description,
+        payment_method: t.payment_method,
+        payment_gateway_id: t.payment_gateway_id,
+        status: t.status,
+        created_at: t.created_at,
+        from_user: t.from_user,
+        to_user: t.to_user,
+      }));
+
+      set({ transactions: typedTransactions });
+    } catch (error) {
+      console.error('Failed to fetch wallet transactions:', error);
+    } finally {
+      set({ isLoading: false });
+    }
+  },
+
+  fetchGroupTransactions: async (groupId: string) => {
+    set({ isLoading: true });
+    try {
+      const { data: wallet } = await supabase
+        .from('wallets')
+        .select('id')
+        .eq('group_id', groupId)
+        .single();
+
+      if (!wallet) {
+        set({ transactions: [] });
+        return;
+      }
+
+      await get().fetchWalletTransactions(wallet.id);
+    } catch (error) {
+      console.error('Failed to fetch group transactions:', error);
+    } finally {
+      set({ isLoading: false });
+    }
+  },
+
+  addTransaction: async (transactionData) => {
+    set({ isLoading: true });
+    try {
+      const newTransaction = {
+        id: generateUniqueId(),
+        ...transactionData,
+        created_at: new Date().toISOString(),
+      };
+
+      const { error } = await supabase
+        .from('transactions')
+        .insert([newTransaction]);
+
+      if (error) throw error;
+
+      set((state) => ({
+        transactions: [...state.transactions, newTransaction as Transaction],
+      }));
+
+      return newTransaction as Transaction;
+    } catch (error) {
+      console.error('Failed to add transaction:', error);
+      throw error;
+    } finally {
+      set({ isLoading: false });
+    }
   },
 
   getWalletTransactions: (walletId) => {
-    return get().transactions
-      .filter((t) => t.wallet_id === walletId)
-      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+    return get().transactions.filter((t) => t.wallet_id === walletId);
   },
 
   getGroupTransactions: (groupId) => {
-    const wallet = get().getGroupWallet(groupId);
-    if (!wallet) return [];
-    return get().getWalletTransactions(wallet.id);
+    return get().transactions.filter((t) => {
+      const wallet = get().wallets.find(w => w.id === t.wallet_id);
+      return wallet?.group_id === groupId;
+    });
   },
 
-  addFunds: (groupId, amount, description, userId) => {
+  addFunds: async (groupId, amount, description, userId) => {
     if (!validateAmount(amount)) {
       throw new Error('Invalid amount');
     }
-
-    const wallet = get().createGroupWallet(groupId);
     
-    const updatedWallets = get().wallets.map((w) =>
-      w.id === wallet.id
-        ? {
-            ...w,
-            balance: w.balance + amount,
-            updated_at: new Date().toISOString(),
-          }
-        : w
-    );
+    const wallet = get().wallets.find(w => w.group_id === groupId) || 
+                   await get().fetchGroupWallet(groupId);
+    
+    if (!wallet) {
+      throw new Error('Group wallet not found');
+    }
 
-    const newTransaction = get().addTransaction({
+    const transaction = await get().addTransaction({
       wallet_id: wallet.id,
       type: 'collection',
-      amount,
-      description,
+      amount: amount,
       from_user_id: userId,
       status: 'completed',
+      description: description,
+      payment_method: 'upi',
     });
 
-    set({ wallets: updatedWallets });
-    storageSet(WALLETS_STORAGE_KEY, updatedWallets);
+    const { error: walletError } = await supabase
+      .from('wallets')
+      .update({ 
+        balance: wallet.balance + amount,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', wallet.id);
 
-    return newTransaction;
+    if (walletError) throw walletError;
+
+    set((state) => ({
+      wallets: state.wallets.map(w => 
+        w.id === wallet.id 
+          ? { ...w, balance: w.balance + amount, updated_at: new Date().toISOString() }
+          : w
+      ),
+    }));
+
+    return transaction;
   },
 
-  makePayment: (groupId, amount, description, userId, vendorId) => {
+  makePayment: async (groupId, amount, description, userId, vendorId) => {
     if (!validateAmount(amount)) {
       throw new Error('Invalid amount');
     }
+    
+    const wallet = get().wallets.find(w => w.group_id === groupId) || 
+                   await get().fetchGroupWallet(groupId);
+    
+    if (!wallet) {
+      throw new Error('Group wallet not found');
+    }
 
-    const wallet = get().getGroupWallet(groupId);
-    if (!wallet) throw new Error('Wallet not found');
-    if (wallet.balance < amount) throw new Error('Insufficient balance');
+    if (wallet.balance < amount) {
+      throw new Error('Insufficient funds');
+    }
 
-    const updatedWallets = get().wallets.map((w) =>
-      w.id === wallet.id
-        ? {
-            ...w,
-            balance: w.balance - amount,
-            updated_at: new Date().toISOString(),
-          }
-        : w
-    );
-
-    const newTransaction = get().addTransaction({
+    const transaction = await get().addTransaction({
       wallet_id: wallet.id,
       type: 'payment',
-      amount,
-      description,
-      from_user_id: userId,
-      vendor_id: vendorId || undefined,
+      amount: amount,
+      to_user_id: userId,
+      vendor_id: vendorId,
+      description: description,
+      payment_method: 'upi',
       status: 'completed',
     });
 
-    set({ wallets: updatedWallets });
-    storageSet(WALLETS_STORAGE_KEY, updatedWallets);
+    const { error: walletError } = await supabase
+      .from('wallets')
+      .update({ 
+        balance: wallet.balance - amount,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', wallet.id);
 
-    return newTransaction;
+    if (walletError) throw walletError;
+
+    set((state) => ({
+      wallets: state.wallets.map(w => 
+        w.id === wallet.id 
+          ? { ...w, balance: w.balance - amount, updated_at: new Date().toISOString() }
+          : w
+      ),
+    }));
+
+    return transaction;
   },
 
-  lockEscrow: (groupId, amount, description) => {
+  lockEscrow: async (groupId, amount, description) => {
     if (!validateAmount(amount)) {
       throw new Error('Invalid amount');
     }
+    
+    const wallet = get().wallets.find(w => w.group_id === groupId) || 
+                   await get().fetchGroupWallet(groupId);
+    
+    if (!wallet) {
+      throw new Error('Group wallet not found');
+    }
 
-    const wallet = get().getGroupWallet(groupId);
-    if (!wallet) throw new Error('Wallet not found');
-    if (wallet.balance < amount) throw new Error('Insufficient balance');
+    if (wallet.balance < amount) {
+      throw new Error('Insufficient funds');
+    }
 
-    const updatedWallets = get().wallets.map((w) =>
-      w.id === wallet.id
-        ? {
-            ...w,
-            balance: w.balance - amount,
-            escrow_balance: w.escrow_balance + amount,
-            updated_at: new Date().toISOString(),
-          }
-        : w
-    );
-
-    const newTransaction = get().addTransaction({
+    const transaction = await get().addTransaction({
       wallet_id: wallet.id,
       type: 'escrow_lock',
-      amount,
-      description,
-      status: 'completed',
+      amount: amount,
+      description: description,
+      status: 'pending',
     });
 
-    set({ wallets: updatedWallets });
-    storageSet(WALLETS_STORAGE_KEY, updatedWallets);
+    const { error: walletError } = await supabase
+      .from('wallets')
+      .update({ 
+        balance: wallet.balance - amount,
+        escrow_balance: wallet.escrow_balance + amount,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', wallet.id);
 
-    return newTransaction;
+    if (walletError) throw walletError;
+
+    set((state) => ({
+      wallets: state.wallets.map(w => 
+        w.id === wallet.id 
+          ? { 
+              ...w, 
+              balance: w.balance - amount,
+              escrow_balance: w.escrow_balance + amount,
+              updated_at: new Date().toISOString(),
+            }
+          : w
+      ),
+    }));
+
+    return transaction;
   },
 
-  releaseEscrow: (groupId, transactionId) => {
-    const lockTransaction = get().transactions.find((t) => t.id === transactionId);
-    if (!lockTransaction || lockTransaction.type !== 'escrow_lock') {
-      throw new Error('Transaction not found or not an escrow lock');
+  releaseEscrow: async (groupId, transactionId) => {
+    const wallet = get().wallets.find(w => w.group_id === groupId) || 
+                   await get().fetchGroupWallet(groupId);
+    
+    if (!wallet) {
+      throw new Error('Group wallet not found');
     }
 
-    const wallet = get().getGroupWallet(groupId);
-    if (!wallet) throw new Error('Wallet not found');
-    if (wallet.escrow_balance < lockTransaction.amount) throw new Error('Insufficient escrow balance');
+    const transaction = get().transactions.find(t => t.id === transactionId);
+    if (!transaction || transaction.type !== 'escrow_lock') {
+      throw new Error('Invalid escrow transaction');
+    }
 
-    const updatedWallets = get().wallets.map((w) =>
-      w.id === wallet.id
-        ? {
-            ...w,
-            escrow_balance: w.escrow_balance - lockTransaction.amount,
-            updated_at: new Date().toISOString(),
-          }
-        : w
-    );
-
-    const newTransaction = get().addTransaction({
+    const releaseTransaction = await get().addTransaction({
       wallet_id: wallet.id,
       type: 'escrow_release',
-      amount: lockTransaction.amount,
-      description: `Escrow release for: ${lockTransaction.description}`,
+      amount: transaction.amount,
+      description: `Release escrow: ${transaction.description}`,
       status: 'completed',
     });
 
-    set({ wallets: updatedWallets });
-    storageSet(WALLETS_STORAGE_KEY, updatedWallets);
+    const { error: walletError } = await supabase
+      .from('wallets')
+      .update({ 
+        escrow_balance: wallet.escrow_balance - transaction.amount,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', wallet.id);
 
-    return newTransaction;
+    if (walletError) throw walletError;
+
+    set((state) => ({
+      wallets: state.wallets.map(w => 
+        w.id === wallet.id 
+          ? { 
+              ...w, 
+              escrow_balance: w.escrow_balance - transaction.amount,
+              updated_at: new Date().toISOString(),
+            }
+          : w
+      ),
+      transactions: state.transactions.map(t => 
+        t.id === transactionId 
+          ? { ...t, status: 'completed' as const }
+          : t
+      ),
+    }));
+
+    return releaseTransaction;
   },
 
-  createPaymentRequest: (requestData) => {
-    const newPaymentRequest: PaymentRequest = {
-      id: generateUniqueId(),
-      ...requestData,
-      status: 'pending',
-      created_at: new Date().toISOString(),
-    };
+  fetchPaymentRequests: async (groupId) => {
+    set({ isLoading: true });
+    try {
+      const { data: requests, error: requestError } = await supabase
+        .from('payment_requests')
+        .select(`
+          *,
+          creator:users!payment_requests_created_by_fkey(*),
+          approver:users!payment_requests_approved_by_fkey(*)
+        `)
+        .eq('group_id', groupId);
 
-    const updatedPaymentRequests = [...get().paymentRequests, newPaymentRequest];
-    set({ paymentRequests: updatedPaymentRequests });
-    storageSet(PAYMENT_REQUESTS_STORAGE_KEY, updatedPaymentRequests);
+      if (requestError) throw requestError;
 
-    return newPaymentRequest;
-  },
+      const { data: members, error: memberError } = await supabase
+        .from('payment_request_members')
+        .select(`
+          *,
+          user:users(*)
+        `)
+        .in('payment_request_id', requests?.map(r => r.id) || []);
 
-  addPaymentRequestMember: (memberData) => {
-    const newMember: PaymentRequestMember = {
-      id: generateUniqueId(),
-      ...memberData,
-      status: 'pending',
-    };
+      if (memberError) throw memberError;
 
-    const updatedMembers = [...get().paymentRequestMembers, newMember];
-    set({ paymentRequestMembers: updatedMembers });
-    storageSet(PAYMENT_MEMBERS_STORAGE_KEY, updatedMembers);
+      const typedRequests: PaymentRequest[] = (requests || []).map(r => ({
+        id: r.id,
+        group_id: r.group_id,
+        created_by: r.created_by,
+        amount: r.amount,
+        purpose: r.purpose,
+        split_type: r.split_type,
+        status: r.status,
+        approved_by: r.approved_by,
+        due_date: r.due_date,
+        created_at: r.created_at,
+        creator: r.creator,
+        approver: r.approver,
+      }));
 
-    return newMember;
-  },
+      const typedMembers: PaymentRequestMember[] = (members || []).map(m => ({
+        id: m.id,
+        payment_request_id: m.payment_request_id,
+        user_id: m.user_id,
+        amount: m.amount,
+        status: m.status,
+        paid_at: m.paid_at,
+        user: m.user,
+      }));
 
-  markMemberPaid: (requestMemberId) => {
-    const updatedMembers = get().paymentRequestMembers.map((m) =>
-      m.id === requestMemberId
-        ? {
-            ...m,
-            status: 'paid' as const,
-            paid_at: new Date().toISOString(),
-          }
-        : m
-    );
-
-    const member = get().paymentRequestMembers.find((m) => m.id === requestMemberId);
-    if (member) {
-      const request = get().paymentRequests.find((pr) => pr.id === member.payment_request_id);
-      if (request) {
-        get().addFunds(request.group_id, member.amount, `Payment request: ${request.purpose}`, member.user_id);
-      }
+      set({ 
+        paymentRequests: typedRequests,
+        paymentRequestMembers: typedMembers,
+      });
+    } catch (error) {
+      console.error('Failed to fetch payment requests:', error);
+    } finally {
+      set({ isLoading: false });
     }
-
-    set({ paymentRequestMembers: updatedMembers });
-    storageSet(PAYMENT_MEMBERS_STORAGE_KEY, updatedMembers);
   },
 
-  approvePaymentRequest: (requestId, approverId) => {
-    const updatedPaymentRequests = get().paymentRequests.map((pr) =>
-      pr.id === requestId
-        ? {
-            ...pr,
-            status: 'approved' as const,
-            approved_by: approverId,
-          }
-        : pr
-    );
+  createPaymentRequest: async (requestData) => {
+    set({ isLoading: true });
+    try {
+      const newRequest = {
+        id: generateUniqueId(),
+        ...requestData,
+        status: 'pending' as const,
+        created_at: new Date().toISOString(),
+      };
 
-    set({ paymentRequests: updatedPaymentRequests });
-    storageSet(PAYMENT_REQUESTS_STORAGE_KEY, updatedPaymentRequests);
+      const { error } = await supabase
+        .from('payment_requests')
+        .insert([newRequest]);
+
+      if (error) throw error;
+
+      set((state) => ({
+        paymentRequests: [...state.paymentRequests, newRequest as PaymentRequest],
+      }));
+
+      return newRequest as PaymentRequest;
+    } catch (error) {
+      console.error('Failed to create payment request:', error);
+      throw error;
+    } finally {
+      set({ isLoading: false });
+    }
   },
 
-  rejectPaymentRequest: (requestId) => {
-    const updatedPaymentRequests = get().paymentRequests.map((pr) =>
-      pr.id === requestId
-        ? {
-            ...pr,
-            status: 'rejected' as const,
-          }
-        : pr
-    );
+  addPaymentRequestMember: async (memberData) => {
+    set({ isLoading: true });
+    try {
+      const newMember = {
+        id: generateUniqueId(),
+        ...memberData,
+        status: 'pending' as const,
+        paid_at: undefined,
+      };
 
-    set({ paymentRequests: updatedPaymentRequests });
-    storageSet(PAYMENT_REQUESTS_STORAGE_KEY, updatedPaymentRequests);
+      const { error } = await supabase
+        .from('payment_request_members')
+        .insert([newMember]);
+
+      if (error) throw error;
+
+      set((state) => ({
+        paymentRequestMembers: [...state.paymentRequestMembers, newMember as PaymentRequestMember],
+      }));
+
+      return newMember as PaymentRequestMember;
+    } catch (error) {
+      console.error('Failed to add payment request member:', error);
+      throw error;
+    } finally {
+      set({ isLoading: false });
+    }
+  },
+
+  markMemberPaid: async (requestMemberId) => {
+    set({ isLoading: true });
+    try {
+      const { error } = await supabase
+        .from('payment_request_members')
+        .update({ 
+          status: 'paid' as const,
+          paid_at: new Date().toISOString(),
+        })
+        .eq('id', requestMemberId);
+
+      if (error) throw error;
+
+      set((state) => ({
+        paymentRequestMembers: state.paymentRequestMembers.map((m) => 
+          m.id === requestMemberId 
+            ? { ...m, status: 'paid' as const, paid_at: new Date().toISOString() }
+            : m
+        ),
+      }));
+    } catch (error) {
+      console.error('Failed to mark member paid:', error);
+      throw error;
+    } finally {
+      set({ isLoading: false });
+    }
+  },
+
+  approvePaymentRequest: async (requestId, approverId) => {
+    set({ isLoading: true });
+    try {
+      const { error } = await supabase
+        .from('payment_requests')
+        .update({ 
+          status: 'approved' as const,
+          approved_by: approverId,
+        })
+        .eq('id', requestId);
+
+      if (error) throw error;
+
+      set((state) => ({
+        paymentRequests: state.paymentRequests.map((r) => 
+          r.id === requestId 
+            ? { ...r, status: 'approved' as const, approved_by: approverId }
+            : r
+        ),
+      }));
+    } catch (error) {
+      console.error('Failed to approve payment request:', error);
+      throw error;
+    } finally {
+      set({ isLoading: false });
+    }
+  },
+
+  rejectPaymentRequest: async (requestId) => {
+    set({ isLoading: true });
+    try {
+      const { error } = await supabase
+        .from('payment_requests')
+        .update({ 
+          status: 'rejected' as const,
+        })
+        .eq('id', requestId);
+
+      if (error) throw error;
+
+      set((state) => ({
+        paymentRequests: state.paymentRequests.map((r) => 
+          r.id === requestId 
+            ? { ...r, status: 'rejected' as const }
+            : r
+        ),
+      }));
+    } catch (error) {
+      console.error('Failed to reject payment request:', error);
+      throw error;
+    } finally {
+      set({ isLoading: false });
+    }
   },
 
   getGroupPaymentRequests: (groupId) => {
-    return get().paymentRequests
-      .filter((pr) => pr.group_id === groupId)
-      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
-  },
-
-  loadFromStorage: () => {
-    set({
-      wallets: loadWalletsFromStorage(),
-      transactions: loadTransactionsFromStorage(),
-      paymentRequests: loadPaymentRequestsFromStorage(),
-      paymentRequestMembers: loadPaymentMembersFromStorage(),
-    });
-  },
-
-  saveToStorage: () => {
-    const { wallets, transactions, paymentRequests, paymentRequestMembers } = get();
-    storageSet(WALLETS_STORAGE_KEY, wallets);
-    storageSet(TRANSACTIONS_STORAGE_KEY, transactions);
-    storageSet(PAYMENT_REQUESTS_STORAGE_KEY, paymentRequests);
-    storageSet(PAYMENT_MEMBERS_STORAGE_KEY, paymentRequestMembers);
+    const requests = get().paymentRequests.filter((r) => r.group_id === groupId);
+    return requests.map(r => ({
+      ...r,
+      member_payments: get().paymentRequestMembers.filter(m => m.payment_request_id === r.id),
+    }));
   },
 }));
-
-// Listen for storage events to sync across tabs
-window.addEventListener('storage', (event) => {
-  if (
-    event.key === WALLETS_STORAGE_KEY ||
-    event.key === TRANSACTIONS_STORAGE_KEY ||
-    event.key === PAYMENT_REQUESTS_STORAGE_KEY ||
-    event.key === PAYMENT_MEMBERS_STORAGE_KEY
-  ) {
-    useWalletStore.getState().loadFromStorage();
-  }
-});

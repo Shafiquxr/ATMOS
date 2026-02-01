@@ -22,7 +22,7 @@ export function DashboardPage() {
 
   // Calculate stats from real data
   const totalBalance = userGroups.reduce((sum, group) => {
-    const wallet = getGroupWallet(group.id);
+    const wallet = await getGroupWallet(group.id);
     return sum + (wallet?.balance || 0);
   }, 0);
 
@@ -46,7 +46,7 @@ export function DashboardPage() {
   const alerts: Array<{ id: string; type: 'info' | 'urgent'; message: string; link: string }> = [];
   userGroups.forEach((group) => {
     const tasks = getGroupTasks(group.id);
-    const wallet = getGroupWallet(group.id);
+    const wallet = await getGroupWallet(group.id);
     const overdueTasks = tasks.filter((t) =>
       t.status !== 'completed' && t.deadline && new Date(t.deadline) < new Date()
     );
@@ -72,7 +72,7 @@ export function DashboardPage() {
 
   const recentGroups = userGroups.slice(0, 3).map((group) => {
     const tasks = getGroupTasks(group.id);
-    const wallet = getGroupWallet(group.id);
+    const wallet = await getGroupWallet(group.id);
     const pendingTasksCount = tasks.filter((t) => t.status !== 'completed').length;
     const overdueTasks = tasks.filter((t) => 
       t.status !== 'completed' && t.deadline && new Date(t.deadline) < new Date()
