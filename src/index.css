@@ -1,0 +1,154 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * {
+    @apply border-black;
+  }
+
+  body {
+    @apply bg-white text-black font-sans antialiased;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-mono font-bold;
+  }
+}
+
+@layer components {
+  .btn {
+    @apply px-4 py-2 font-medium border-2 border-black transition-all;
+  }
+
+  .btn-primary {
+    @apply bg-black text-white shadow-retro;
+  }
+
+  .btn-primary:hover:not(:disabled) {
+    @apply translate-x-[2px] translate-y-[2px] shadow-retro-sm;
+  }
+
+  .btn-primary:active:not(:disabled) {
+    @apply translate-x-[4px] translate-y-[4px] shadow-none;
+  }
+
+  .btn-secondary {
+    @apply bg-white text-black shadow-retro;
+  }
+
+  .btn-secondary:hover:not(:disabled) {
+    @apply translate-x-[2px] translate-y-[2px] shadow-retro-sm;
+  }
+
+  .btn-secondary:active:not(:disabled) {
+    @apply translate-x-[4px] translate-y-[4px] shadow-none;
+  }
+
+  .btn-outline {
+    @apply bg-transparent text-black border-2 border-black;
+  }
+
+  .btn-outline:hover:not(:disabled) {
+    @apply bg-nostalgic-100;
+  }
+
+  .btn:disabled {
+    @apply opacity-50 cursor-not-allowed;
+  }
+
+  .card {
+    @apply bg-white border-2 border-black shadow-retro p-6;
+  }
+
+  .card-hover {
+    @apply transition-all hover:translate-x-[2px] hover:translate-y-[2px] hover:shadow-retro-sm;
+  }
+
+  .input {
+    @apply w-full px-4 py-2 border-2 border-black bg-white text-black placeholder-nostalgic-400 focus:outline-none focus:border-nostalgic-900;
+  }
+
+  .input-error {
+    @apply border-red-600;
+  }
+
+  .label {
+    @apply block text-sm font-medium mb-1 text-nostalgic-900;
+  }
+
+  .table {
+    @apply w-full border-2 border-black;
+  }
+
+  .table th {
+    @apply bg-black text-white px-4 py-2 text-left font-mono font-bold border-b-2 border-black;
+  }
+
+  .table td {
+    @apply px-4 py-2 border-b border-nostalgic-300;
+  }
+
+  .table tbody tr:nth-child(even) {
+    @apply bg-nostalgic-50;
+  }
+
+  .table tbody tr:hover {
+    @apply bg-nostalgic-100;
+  }
+
+  .badge {
+    @apply inline-block px-2 py-1 text-xs font-mono font-bold border border-black;
+  }
+
+  .badge-primary {
+    @apply bg-black text-white;
+  }
+
+  .badge-secondary {
+    @apply bg-white text-black;
+  }
+
+  .badge-success {
+    @apply bg-green-100 text-green-800 border-green-800;
+  }
+
+  .badge-error {
+    @apply bg-red-100 text-red-800 border-red-800;
+  }
+
+  .badge-warning {
+    @apply bg-yellow-100 text-yellow-800 border-yellow-800;
+  }
+
+  .badge-info {
+    @apply bg-blue-100 text-blue-800 border-blue-800;
+  }
+
+  .modal-overlay {
+    @apply fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50;
+  }
+
+  .modal-content {
+    @apply bg-white border-2 border-black shadow-retro-lg max-w-2xl w-full max-h-[90vh] overflow-auto;
+  }
+
+  .toast {
+    @apply fixed bottom-4 right-4 bg-white border-2 border-black shadow-retro-lg p-4 max-w-md z-50;
+  }
+
+  .skeleton {
+    @apply bg-nostalgic-200 animate-pulse;
+  }
+}
+
+@layer utilities {
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+}
