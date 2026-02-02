@@ -79,6 +79,10 @@ export const useAuthStore = create<AuthState>((set) => ({
       });
       
       storageSet(AUTH_STORAGE_KEY, user);
+      
+      const { useGroupStore } = await import('./groupStore');
+      await useGroupStore.getState().fetchGroups();
+      useGroupStore.getState().subscribeToRealtimeUpdates();
     } catch (error) {
       console.error('Login error:', error);
       throw error;
@@ -141,6 +145,9 @@ export const useAuthStore = create<AuthState>((set) => ({
       });
       
       storageSet(AUTH_STORAGE_KEY, user);
+      
+      const { useGroupStore } = await import('./groupStore');
+      useGroupStore.getState().subscribeToRealtimeUpdates();
     } catch (error) {
       console.error('Signup error:', error);
       throw error;
@@ -204,6 +211,11 @@ export const useAuthStore = create<AuthState>((set) => ({
           });
           
           storageSet(AUTH_STORAGE_KEY, user);
+          
+          const { useGroupStore } = await import('./groupStore');
+          await useGroupStore.getState().fetchGroups();
+          useGroupStore.getState().subscribeToRealtimeUpdates();
+          
           return;
         }
       }
