@@ -151,6 +151,9 @@ export const useAuthStore = create<AuthState>((set) => ({
 
   logout: async () => {
     try {
+      const { useGroupStore } = await import('./groupStore');
+      useGroupStore.getState().clearLocalData();
+      
       await supabase.auth.signOut();
     } catch (error) {
       console.error('Logout error:', error);

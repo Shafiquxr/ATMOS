@@ -15,7 +15,7 @@ export function WalletPage() {
   const [selectedGroup, setSelectedGroup] = useState<string>('all');
   const { groups, members } = useGroupStore();
   const { user } = useAuthStore();
-  const { fetchGroupWallet: getGroupWallet, getGroupTransactions } = useWalletStore();
+  const { wallets, getGroupTransactions } = useWalletStore();
 
   const userGroups = groups.filter((group) => 
     group.owner_id === user?.id || 
@@ -33,17 +33,17 @@ export function WalletPage() {
 
   if (selectedGroup === 'all') {
     userGroups.forEach((group) => {
-      const wallet = await getGroupWallet(group.id);
+      const wallet = wallets.find((w) => w.group_id === group.id);
       if (wallet) {
         walletStats.totalBalance += wallet.balance;
         walletStats.escrowBalance += wallet.escrow_balance;
-        walletStats.pendingBalance += 0; // pending_balance not currently used
+        walletStats.pendingBalance += wallet.pending_balance || 0;
       }
       allTransactions = [...allTransactions, ...getGroupTransactions(group.id)];
     });
     allTransactions.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
   } else {
-    const wallet = await getGroupWallet(selectedGroup);
+    const wallet = wallets.find((w) => w.group_id === selectedGroup);
     if (wallet) {
       walletStats = {
         totalBalance: wallet.balance,

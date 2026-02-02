@@ -29,7 +29,7 @@ export function GroupDetailPage() {
   const navigate = useNavigate();
   const { user } = useAuthStore();
   const { groups, currentGroup, setCurrentGroup, deleteGroup } = useGroupStore();
-  const { fetchGroupWallet: getGroupWallet, createGroupWallet } = useWalletStore();
+  const { wallets, fetchGroupWallet, createGroupWallet } = useWalletStore();
   const { getGroupTasks } = useTaskStore();
   const { getGroupBookings } = useBookingStore();
   const { addNotification } = useNotificationStore();
@@ -66,10 +66,18 @@ export function GroupDetailPage() {
     );
   }
 
-  const wallet = await getGroupWallet(group.id);
+  const wallet = wallets.find((w) => w.group_id === group.id);
   const tasks = getGroupTasks(group.id);
   const bookings = getGroupBookings(group.id);
   const groupMembers = useGroupStore((state) => state.members.filter(m => m.group_id === group.id));
+
+  useEffect(() => {
+    if (group.id && !wallet) {
+      fetchGroupWallet(group.id).catch(() => {
+        createGroupWallet(group.id);
+      });
+    }
+  }, [group.id, wallet, fetchGroupWallet, createGroupWallet]);
 
   const isMember = group.owner_id === user?.id || groupMembers.some(m => m.user_id === user?.id || m.user_id === user?.email);
 
