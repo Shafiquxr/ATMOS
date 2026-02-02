@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Plus, Mail, MoreVertical, UserMinus } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent } from '../ui/Card';
 import { Button } from '../ui/Button';
@@ -18,7 +18,7 @@ interface GroupMembersTabProps {
 
 export function GroupMembersTab({ group }: GroupMembersTabProps) {
   const { user } = useAuthStore();
-  const { getGroupMembers, addMember, removeMember, updateMemberRole } = useGroupStore();
+  const { getGroupMembers, addMember, removeMember, updateMemberRole, fetchGroupMembers } = useGroupStore();
   const { addToast } = useToastStore();
   const { addNotification } = useNotificationStore();
 
@@ -30,8 +30,13 @@ export function GroupMembersTab({ group }: GroupMembersTabProps) {
   const [newMemberContact, setNewMemberContact] = useState('');
 
   const members = getGroupMembers(group.id);
-  const { users: allUsers } = useAuthStore();
+  const { users: allUsers, fetchUsers } = useAuthStore();
   const isOwner = user?.id === group.owner_id;
+  
+  useEffect(() => {
+    fetchUsers();
+    fetchGroupMembers(group.id);
+  }, [group.id, fetchUsers, fetchGroupMembers]);
 
   const handleAddMember = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -139,12 +144,14 @@ export function GroupMembersTab({ group }: GroupMembersTabProps) {
                     <div>
                       <p className="font-medium">
                         {member.user?.full_name || 
-                         allUsers.find(u => u.id === member.user_id || u.email === member.user_id)?.full_name || 
+                         allUsers.find(u => u.id === member.user_id)?.full_name ||
+                         (member.user_id === user?.id ? user?.full_name : null) ||
                          'Pending Invite'}
                       </p>
                       <p className="text-sm text-nostalgic-600">
                         {member.user?.email || 
-                         allUsers.find(u => u.id === member.user_id || u.email === member.user_id)?.email || 
+                         allUsers.find(u => u.id === member.user_id)?.email ||
+                         (member.user_id === user?.id ? user?.email : null) ||
                          member.user_id}
                       </p>
                       {member.contact_info && (['owner', 'organizer', 'team_lead'].includes(
