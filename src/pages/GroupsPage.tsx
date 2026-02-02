@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Plus, Search, Filter } from 'lucide-react';
 import { AppLayout } from '../layouts/AppLayout';
 import { Button } from '../components/ui/Button';
@@ -10,13 +10,24 @@ import { useTaskStore } from '../stores/taskStore';
 import { useWalletStore } from '../stores/walletStore';
 
 export function GroupsPage() {
-  const { groups, members } = useGroupStore();
+  const { groups, members, fetchGroups, isLoading, subscribeToRealtimeUpdates, unsubscribeFromRealtimeUpdates } = useGroupStore();
   const { user } = useAuthStore();
   const { getGroupTasks } = useTaskStore();
-  const { getGroupWallet } = useWalletStore();
+  const { wallets } = useWalletStore();
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [filterStatus, setFilterStatus] = useState<'all' | 'active' | 'completed' | 'archived'>('all');
+
+  useEffect(() => {
+    if (user) {
+      fetchGroups();
+      subscribeToRealtimeUpdates();
+    }
+
+    return () => {
+      unsubscribeFromRealtimeUpdates();
+    };
+  }, [user, fetchGroups, subscribeToRealtimeUpdates, unsubscribeFromRealtimeUpdates]);
 
   const userGroups = groups.filter((group) => 
     group.owner_id === user?.id || 
@@ -78,11 +89,16 @@ export function GroupsPage() {
         </div>
 
         {/* Groups Grid */}
-        {filteredGroups.length > 0 ? (
+        {isLoading ? (
+          <div className="text-center py-12">
+            <div className="inline-block p-6 bg-white border-2 border-black shadow-retro-sm">
+              <p className="text-lg font-medium">Loading groups...</p>
+            </div>
+          </div>
+        ) : filteredGroups.length > 0 ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {filteredGroups.map((group) => {
               const tasks = getGroupTasks(group.id);
-              const wallet = await getGroupWallet(group.id);
               const pendingTasks = tasks.filter((t) => t.status !== 'completed').length;
               
               const groupMembers = members.filter((m) => m.group_id === group.id);
@@ -91,6 +107,8 @@ export function GroupsPage() {
                 (m) => m.user_id === user?.id || m.user_id === user?.email
               );
               const userRole = userMember?.role || (group.owner_id === user?.id ? 'owner' : 'member');
+              
+              const wallet = wallets.find((w) => w.group_id === group.id);
 
               return (
                 <GroupCard

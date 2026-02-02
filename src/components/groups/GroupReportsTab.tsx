@@ -17,14 +17,14 @@ interface GroupReportsTabProps {
 export function GroupReportsTab({ group }: GroupReportsTabProps) {
   const { getGroupMembers } = useGroupStore();
   const { getGroupTasks } = useTaskStore();
-  const { fetchGroupWallet: getGroupWallet, getGroupTransactions } = useWalletStore();
+  const { wallets, getGroupTransactions } = useWalletStore();
   const { getGroupBookings } = useBookingStore();
 
   const [selectedReport, setSelectedReport] = useState<string>('summary');
 
   const members = getGroupMembers(group.id);
   const tasks = getGroupTasks(group.id);
-  const wallet = await getGroupWallet(group.id);
+  const wallet = wallets.find((w) => w.group_id === group.id);
   const transactions = getGroupTransactions(group.id);
   const bookings = getGroupBookings(group.id);
 

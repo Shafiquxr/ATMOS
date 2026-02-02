@@ -4,6 +4,7 @@ import { supabase } from '../utils/supabase';
 import { storageGet, storageSet, storageRemove } from '../utils/storage';
 import { generateUniqueId } from '../utils/idGenerator';
 import { useAuthStore } from './authStore';
+import type { RealtimeChannel } from '@supabase/supabase-js';
 
 const CURRENT_GROUP_KEY = 'atmos_current_group';
 
@@ -13,6 +14,8 @@ interface GroupState {
   members: GroupMember[];
   subGroups: SubGroup[];
   isLoading: boolean;
+  realtimeChannel: RealtimeChannel | null;
+  
   setGroups: (groups: Group[]) => void;
   setCurrentGroup: (group: Group | null) => void;
   setMembers: (members: GroupMember[]) => void;
@@ -35,6 +38,8 @@ interface GroupState {
   loadFromStorage: () => void;
   saveToStorage: () => void;
   clearLocalData: () => void;
+  subscribeToRealtimeUpdates: () => void;
+  unsubscribeFromRealtimeUpdates: () => void;
 }
 
 export const useGroupStore = create<GroupState>((set, get) => ({
@@ -43,6 +48,7 @@ export const useGroupStore = create<GroupState>((set, get) => ({
   members: [],
   subGroups: [],
   isLoading: false,
+  realtimeChannel: null,
 
   setGroups: (groups) => {
     set({ groups });
@@ -457,12 +463,109 @@ export const useGroupStore = create<GroupState>((set, get) => ({
 
   clearLocalData: () => {
     storageRemove(CURRENT_GROUP_KEY);
+    get().unsubscribeFromRealtimeUpdates();
     set({
       groups: [],
       currentGroup: null,
       members: [],
       subGroups: [],
     });
+  },
+
+  subscribeToRealtimeUpdates: () => {
+    const user = useAuthStore.getState().user;
+    if (!user) return;
+
+    const existingChannel = get().realtimeChannel;
+    if (existingChannel) {
+      existingChannel.unsubscribe();
+    }
+
+    const channel = supabase
+      .channel('groups-changes')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'groups',
+        },
+        (payload) => {
+          console.log('Group change received:', payload);
+          
+          if (payload.eventType === 'INSERT') {
+            const newGroup = payload.new as Group;
+            set((state) => ({
+              groups: [...state.groups, newGroup],
+            }));
+          } else if (payload.eventType === 'UPDATE') {
+            const updatedGroup = payload.new as Group;
+            set((state) => ({
+              groups: state.groups.map((g) => 
+                g.id === updatedGroup.id ? updatedGroup : g
+              ),
+              currentGroup: state.currentGroup?.id === updatedGroup.id 
+                ? updatedGroup 
+                : state.currentGroup,
+            }));
+          } else if (payload.eventType === 'DELETE') {
+            const deletedGroup = payload.old as Group;
+            set((state) => ({
+              groups: state.groups.filter((g) => g.id !== deletedGroup.id),
+              currentGroup: state.currentGroup?.id === deletedGroup.id 
+                ? null 
+                : state.currentGroup,
+            }));
+          }
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'group_members',
+        },
+        (payload) => {
+          console.log('Group member change received:', payload);
+          
+          if (payload.eventType === 'INSERT') {
+            const newMember = payload.new as GroupMember;
+            if (newMember.user_id === user.id) {
+              get().fetchGroups();
+            }
+            set((state) => ({
+              members: [...state.members, newMember],
+            }));
+          } else if (payload.eventType === 'UPDATE') {
+            const updatedMember = payload.new as GroupMember;
+            set((state) => ({
+              members: state.members.map((m) => 
+                m.id === updatedMember.id ? updatedMember : m
+              ),
+            }));
+          } else if (payload.eventType === 'DELETE') {
+            const deletedMember = payload.old as GroupMember;
+            if (deletedMember.user_id === user.id) {
+              get().fetchGroups();
+            }
+            set((state) => ({
+              members: state.members.filter((m) => m.id !== deletedMember.id),
+            }));
+          }
+        }
+      )
+      .subscribe();
+
+    set({ realtimeChannel: channel });
+  },
+
+  unsubscribeFromRealtimeUpdates: () => {
+    const channel = get().realtimeChannel;
+    if (channel) {
+      channel.unsubscribe();
+      set({ realtimeChannel: null });
+    }
   },
 }));
 

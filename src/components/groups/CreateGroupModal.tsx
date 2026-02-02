@@ -30,10 +30,16 @@ export function CreateGroupModal({ isOpen, onClose }: CreateGroupModalProps) {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    if (!formData.name.trim()) {
+      addToast('error', 'Group name is required');
+      return;
+    }
+
     setIsLoading(true);
 
     try {
-      addGroup({
+      await addGroup({
         name: sanitizeInput(formData.name),
         description: sanitizeInput(formData.description),
         category: formData.category,
@@ -43,9 +49,7 @@ export function CreateGroupModal({ isOpen, onClose }: CreateGroupModalProps) {
       });
 
       addToast('success', 'Group created successfully!');
-      onClose();
       
-      // Reset form
       setFormData({
         name: '',
         description: '',
@@ -54,8 +58,11 @@ export function CreateGroupModal({ isOpen, onClose }: CreateGroupModalProps) {
         end_date: '',
         location: '',
       });
+      
+      onClose();
     } catch (error) {
-      addToast('error', 'Failed to create group');
+      console.error('Error creating group:', error);
+      addToast('error', 'Failed to create group. Please try again.');
     } finally {
       setIsLoading(false);
     }
