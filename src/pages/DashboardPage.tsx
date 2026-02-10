@@ -12,11 +12,11 @@ import { useWalletStore } from '../stores/walletStore';
 export function DashboardPage() {
   const { user } = useAuthStore();
   const { groups, members } = useGroupStore();
-  const { getGroupTasks } = useTaskStore();
+  const { getTasksByGroup } = useTaskStore();
   const { wallets } = useWalletStore();
 
-  const userGroups = groups.filter((group) => 
-    group.owner_id === user?.id || 
+  const userGroups = groups.filter((group) =>
+    group.owner_id === user?.id ||
     members.some((m) => m.group_id === group.id && (m.user_id === user?.id || m.user_id === user?.email))
   );
 
@@ -27,12 +27,12 @@ export function DashboardPage() {
   }, 0);
 
   const totalTasks = userGroups.reduce((sum, group) => {
-    const tasks = getGroupTasks(group.id);
+    const tasks = getTasksByGroup(group.id);
     return sum + tasks.length;
   }, 0);
 
   const pendingTasksCount = userGroups.reduce((sum, group) => {
-    const tasks = getGroupTasks(group.id);
+    const tasks = getTasksByGroup(group.id);
     return sum + tasks.filter((t) => t.status !== 'completed').length;
   }, 0);
 
@@ -45,7 +45,7 @@ export function DashboardPage() {
   // Generate alerts based on real data
   const alerts: Array<{ id: string; type: 'info' | 'urgent'; message: string; link: string }> = [];
   userGroups.forEach((group) => {
-    const tasks = getGroupTasks(group.id);
+    const tasks = getTasksByGroup(group.id);
     const wallet = wallets.find((w) => w.group_id === group.id);
     const overdueTasks = tasks.filter((t) =>
       t.status !== 'completed' && t.deadline && new Date(t.deadline) < new Date()
@@ -71,13 +71,13 @@ export function DashboardPage() {
   });
 
   const recentGroups = userGroups.slice(0, 3).map((group) => {
-    const tasks = getGroupTasks(group.id);
+    const tasks = getTasksByGroup(group.id);
     const wallet = wallets.find((w) => w.group_id === group.id);
     const pendingTasksCount = tasks.filter((t) => t.status !== 'completed').length;
-    const overdueTasks = tasks.filter((t) => 
+    const overdueTasks = tasks.filter((t) =>
       t.status !== 'completed' && t.deadline && new Date(t.deadline) < new Date()
     ).length;
-    
+
     const groupMembers = members.filter(m => m.group_id === group.id);
     const userMember = groupMembers.find(m => m.user_id === user?.id || m.user_id === user?.email);
 

@@ -17,7 +17,7 @@ interface GroupVendorsTabProps {
 
 export function GroupVendorsTab({ group }: GroupVendorsTabProps) {
   const { user } = useAuthStore();
-  const { vendors, addVendor, updateVendor, deleteVendor, addReview } = useVendorStore();
+  const { vendors, createVendor, updateVendor, deleteVendor, addReview } = useVendorStore();
   const { addToast } = useToastStore();
 
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
@@ -39,7 +39,7 @@ export function GroupVendorsTab({ group }: GroupVendorsTabProps) {
     price_range: 'moderate' as const,
   });
 
-  const filteredVendors = vendors.filter((v) => 
+  const filteredVendors = vendors.filter((v) =>
     filterCategory === 'all' || v.category === filterCategory
   );
 
@@ -47,7 +47,7 @@ export function GroupVendorsTab({ group }: GroupVendorsTabProps) {
     e.preventDefault();
 
     try {
-      addVendor({
+      createVendor({
         name: sanitizeInput(formData.name),
         category: formData.category,
         description: sanitizeInput(formData.description),

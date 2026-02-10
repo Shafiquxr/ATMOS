@@ -17,7 +17,7 @@ interface GroupWalletTabProps {
 
 export function GroupWalletTab({ group }: GroupWalletTabProps) {
   const { user } = useAuthStore();
-  const { wallets, getGroupTransactions, addFunds, makePayment, lockEscrow } = useWalletStore();
+  const { wallets, transactions, createTransaction, updateBalance } = useWalletStore();
   const { addToast } = useToastStore();
 
   const [isAddFundsModalOpen, setIsAddFundsModalOpen] = useState(false);
@@ -29,7 +29,7 @@ export function GroupWalletTab({ group }: GroupWalletTabProps) {
   const [vendorId, setVendorId] = useState('');
 
   const wallet = wallets.find((w) => w.group_id === group.id);
-  const transactions = getGroupTransactions(group.id);
+  const groupTransactions = transactions.filter((t) => t.wallet_id === wallet?.id);
 
   const handleAddFunds = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -41,7 +41,13 @@ export function GroupWalletTab({ group }: GroupWalletTabProps) {
     }
 
     try {
-      addFunds(group.id, amountNum, description, user!.id);
+      await createTransaction({
+        wallet_id: wallet?.id,
+        type: 'collection',
+        amount: amountNum,
+        description: description || 'Funds added',
+        from_user_id: user!.id,
+      });
       addToast('success', 'Funds added successfully');
       setIsAddFundsModalOpen(false);
       resetForm();
@@ -60,7 +66,14 @@ export function GroupWalletTab({ group }: GroupWalletTabProps) {
     }
 
     try {
-      makePayment(group.id, amountNum, description, user!.id, vendorId || undefined);
+      await createTransaction({
+        wallet_id: wallet?.id,
+        type: 'payment',
+        amount: amountNum,
+        description: description || 'Payment made',
+        from_user_id: user!.id,
+        vendor_id: vendorId || undefined,
+      });
       addToast('success', 'Payment successful');
       setIsMakePaymentModalOpen(false);
       resetForm();
@@ -79,7 +92,13 @@ export function GroupWalletTab({ group }: GroupWalletTabProps) {
     }
 
     try {
-      lockEscrow(group.id, amountNum, description);
+      await createTransaction({
+        wallet_id: wallet?.id,
+        type: 'escrow_lock',
+        amount: amountNum,
+        description: description || 'Escrow locked',
+        from_user_id: user!.id,
+      });
       addToast('success', 'Escrow locked successfully');
       setIsLockEscrowModalOpen(false);
       resetForm();
@@ -219,9 +238,8 @@ export function GroupWalletTab({ group }: GroupWalletTabProps) {
                     </div>
                   </div>
                   <div className="text-right">
-                    <p className={`text-lg font-mono font-bold ${
-                      transaction.type === 'collection' ? 'text-green-600' : 'text-red-600'
-                    }`}>
+                    <p className={`text-lg font-mono font-bold ${transaction.type === 'collection' ? 'text-green-600' : 'text-red-600'
+                      }`}>
                       {transaction.type === 'collection' ? '+' : '-'}{formatCurrency(transaction.amount)}
                     </p>
                     {transaction.payment_method && (

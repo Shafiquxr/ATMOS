@@ -30,6 +30,7 @@ export interface Group {
   status: GroupStatus;
   created_at: string;
   updated_at: string;
+  member_count?: number; // Populated by fetchGroups via embedded count
 }
 
 export interface GroupMember {

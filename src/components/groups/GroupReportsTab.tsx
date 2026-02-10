@@ -15,18 +15,18 @@ interface GroupReportsTabProps {
 }
 
 export function GroupReportsTab({ group }: GroupReportsTabProps) {
-  const { getGroupMembers } = useGroupStore();
-  const { getGroupTasks } = useTaskStore();
-  const { wallets, getGroupTransactions } = useWalletStore();
-  const { getGroupBookings } = useBookingStore();
+  const { members } = useGroupStore();
+  const { getTasksByGroup } = useTaskStore();
+  const { wallets, transactions } = useWalletStore();
+  const { getBookingsByGroup } = useBookingStore();
 
   const [selectedReport, setSelectedReport] = useState<string>('summary');
 
-  const members = getGroupMembers(group.id);
-  const tasks = getGroupTasks(group.id);
+  const groupMembers = members.filter((m) => m.group_id === group.id);
+  const tasks = getTasksByGroup(group.id);
   const wallet = wallets.find((w) => w.group_id === group.id);
-  const transactions = getGroupTransactions(group.id);
-  const bookings = getGroupBookings(group.id);
+  const groupTransactions = transactions.filter((t) => t.wallet_id === wallet?.id);
+  const bookings = getBookingsByGroup(group.id);
 
   const completedTasks = tasks.filter((t) => t.status === 'completed');
   const pendingTasks = tasks.filter((t) => t.status !== 'completed');

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Plus, Mail, MoreVertical, UserMinus } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent } from '../ui/Card';
 import { Button } from '../ui/Button';
@@ -18,7 +18,7 @@ interface GroupMembersTabProps {
 
 export function GroupMembersTab({ group }: GroupMembersTabProps) {
   const { user } = useAuthStore();
-  const { getGroupMembers, addMember, removeMember, updateMemberRole } = useGroupStore();
+  const { members, addMember, removeMember, updateMemberRole, fetchMembers } = useGroupStore();
   const { addToast } = useToastStore();
   const { addNotification } = useNotificationStore();
 
@@ -29,16 +29,21 @@ export function GroupMembersTab({ group }: GroupMembersTabProps) {
   const [newMemberRole, setNewMemberRole] = useState<UserRole>('member');
   const [newMemberContact, setNewMemberContact] = useState('');
 
-  const members = getGroupMembers(group.id);
-  const { users: allUsers } = useAuthStore();
+  const groupMembers = members.filter((m) => m.group_id === group.id);
+  const { users: allUsers, fetchUsers } = useAuthStore();
   const isOwner = user?.id === group.owner_id;
+
+  useEffect(() => {
+    fetchUsers();
+    fetchMembers(group.id);
+  }, [group.id, fetchUsers, fetchMembers]);
 
   const handleAddMember = async (e: React.FormEvent) => {
     e.preventDefault();
 
     try {
       const sanitizedEmail = sanitizeEmail(newMemberEmail);
-      
+
       if (!sanitizedEmail) {
         addToast('error', 'Invalid email address');
         return;
@@ -47,12 +52,11 @@ export function GroupMembersTab({ group }: GroupMembersTabProps) {
       // Try to find if user exists
       const existingUser = allUsers.find(u => u.email === sanitizedEmail);
 
-      addMember(group.id, {
-        group_id: group.id,
-        user_id: existingUser?.id || sanitizedEmail,
-        role: newMemberRole,
-        contact_info: newMemberContact,
-      });
+      await addMember(
+        group.id,
+        existingUser?.id || sanitizedEmail,
+        newMemberRole
+      );
 
       addNotification({
         user_id: user!.id,
@@ -87,7 +91,7 @@ export function GroupMembersTab({ group }: GroupMembersTabProps) {
   };
 
   const handleRoleChange = (memberId: string, newRole: UserRole) => {
-    updateMemberRole(group.id, memberId, newRole);
+    updateMemberRole(memberId, newRole);
     addToast('success', 'Member role updated');
     setIsMemberMenuOpen(null);
   };
@@ -138,22 +142,24 @@ export function GroupMembersTab({ group }: GroupMembersTabProps) {
                     </div>
                     <div>
                       <p className="font-medium">
-                        {member.user?.full_name || 
-                         allUsers.find(u => u.id === member.user_id || u.email === member.user_id)?.full_name || 
-                         'Pending Invite'}
+                        {member.user?.full_name ||
+                          allUsers.find(u => u.id === member.user_id)?.full_name ||
+                          (member.user_id === user?.id ? user?.full_name : null) ||
+                          'Pending Invite'}
                       </p>
                       <p className="text-sm text-nostalgic-600">
-                        {member.user?.email || 
-                         allUsers.find(u => u.id === member.user_id || u.email === member.user_id)?.email || 
-                         member.user_id}
+                        {member.user?.email ||
+                          allUsers.find(u => u.id === member.user_id)?.email ||
+                          (member.user_id === user?.id ? user?.email : null) ||
+                          member.user_id}
                       </p>
                       {member.contact_info && (['owner', 'organizer', 'team_lead'].includes(
                         members.find(m => m.user_id === user?.id || m.user_id === user?.email)?.role || ''
                       ) || isOwner) && (
-                        <p className="text-xs text-nostalgic-500 mt-0.5">
-                          Contact: {member.contact_info}
-                        </p>
-                      )}
+                          <p className="text-xs text-nostalgic-500 mt-0.5">
+                            Contact: {member.contact_info}
+                          </p>
+                        )}
                     </div>
                   </div>
 
@@ -184,9 +190,8 @@ export function GroupMembersTab({ group }: GroupMembersTabProps) {
                                 <button
                                   key={role}
                                   onClick={() => handleRoleChange(member.id, role)}
-                                  className={`w-full px-4 py-2 text-left hover:bg-nostalgic-100 text-sm ${
-                                    member.role === role ? 'font-bold' : ''
-                                  }`}
+                                  className={`w-full px-4 py-2 text-left hover:bg-nostalgic-100 text-sm ${member.role === role ? 'font-bold' : ''
+                                    }`}
                                 >
                                   {roleLabels[role]}
                                 </button>

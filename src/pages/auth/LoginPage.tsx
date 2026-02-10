@@ -21,9 +21,10 @@ export function LoginPage() {
       await login(email, password);
       addToast('success', 'Welcome back!', 'You have successfully logged in.');
       navigate('/dashboard');
-    } catch (err) {
-      setError('Invalid email or password');
-      addToast('error', 'Login failed', 'Please check your credentials and try again.');
+    } catch (err: any) {
+      const errorMessage = err.message || 'Invalid email or password';
+      setError(errorMessage);
+      addToast('error', 'Login failed', errorMessage);
     }
   };
 

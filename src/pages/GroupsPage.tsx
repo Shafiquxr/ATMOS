@@ -10,9 +10,9 @@ import { useTaskStore } from '../stores/taskStore';
 import { useWalletStore } from '../stores/walletStore';
 
 export function GroupsPage() {
-  const { groups, members, fetchGroups, isLoading, subscribeToRealtimeUpdates, unsubscribeFromRealtimeUpdates } = useGroupStore();
+  const { groups, members, fetchGroups, isLoading, subscribeToRealtimeUpdates } = useGroupStore();
   const { user } = useAuthStore();
-  const { getGroupTasks } = useTaskStore();
+  const { getTasksByGroup } = useTaskStore();
   const { wallets } = useWalletStore();
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -20,23 +20,18 @@ export function GroupsPage() {
 
   useEffect(() => {
     if (user) {
-      fetchGroups();
       subscribeToRealtimeUpdates();
     }
+  }, [user, subscribeToRealtimeUpdates]);
 
-    return () => {
-      unsubscribeFromRealtimeUpdates();
-    };
-  }, [user, fetchGroups, subscribeToRealtimeUpdates, unsubscribeFromRealtimeUpdates]);
-
-  const userGroups = groups.filter((group) => 
-    group.owner_id === user?.id || 
-    members.some((m) => m.group_id === group.id && (m.user_id === user?.id || m.user_id === user?.email))
-  );
+  // SIMPLIFIED: RLS policies already filter groups to only those the user can access
+  // (owner OR member), so we just use the groups directly from the store
+  const userGroups = groups;
+  console.log('[GroupsPage] Displaying groups:', { count: groups.length, groups: groups.map(g => ({ id: g.id, name: g.name })) });
 
   const filteredGroups = userGroups.filter((group) => {
     const matchesSearch = group.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                         group.description?.toLowerCase().includes(searchQuery.toLowerCase());
+      group.description?.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesFilter = filterStatus === 'all' || group.status === filterStatus;
     return matchesSearch && matchesFilter;
   });
@@ -98,16 +93,18 @@ export function GroupsPage() {
         ) : filteredGroups.length > 0 ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {filteredGroups.map((group) => {
-              const tasks = getGroupTasks(group.id);
+              const tasks = getTasksByGroup(group.id);
               const pendingTasks = tasks.filter((t) => t.status !== 'completed').length;
-              
-              const groupMembers = members.filter((m) => m.group_id === group.id);
-              const memberCount = groupMembers.length;
-              const userMember = groupMembers.find(
-                (m) => m.user_id === user?.id || m.user_id === user?.email
+
+              // Use member_count from the group (populated by fetchGroups)
+              const memberCount = group.member_count || 1; // Default to 1 (owner) if not set
+
+              // Find user's membership to determine role
+              const userMember = members.find(
+                (m: any) => m.group_id === group.id && (m.user_id === user?.id || m.user_id === user?.email)
               );
               const userRole = userMember?.role || (group.owner_id === user?.id ? 'owner' : 'member');
-              
+
               const wallet = wallets.find((w) => w.group_id === group.id);
 
               return (
