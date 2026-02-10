@@ -9,13 +9,9 @@ This document outlines all the critical fixes applied to resolve the issues with
 
 ## Issues Fixed
 
-### 1. ✅ **New Supabase Project Created**
-- **Old State**: No configured Supabase project
-- **New State**: Fresh Supabase project created with proper configuration
-  - **Project ID**: `pgzkxandyroceiofxsba`
-  - **Region**: `ap-south-1` (Mumbai, India)
-  - **URL**: `https://pgzkxandyroceiofxsba.supabase.co`
-  - **Status**: ACTIVE_HEALTHY
+### 1. ✅ **Switched to localStorage Persistence**
+- **Old State**: Supabase-based backend (now decommissioned)
+- **New State**: All data is persisted via localStorage for offline-first operation
 
 ### 2. ✅ **Complete Database Schema Rebuilt**
 All tables were created from scratch with:
@@ -238,17 +234,8 @@ CREATE INDEX idx_transactions_created_at ON transactions(created_at DESC);
 
 ## Environment Configuration
 
-### .env File Created
-```bash
-VITE_SUPABASE_URL=https://pgzkxandyroceiofxsba.supabase.co
-VITE_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
-
-# Razorpay Configuration (to be configured later)
-VITE_RAZORPAY_KEY=
-
-# Google OAuth Configuration (to be configured later)
-VITE_GOOGLE_CLIENT_ID=
-```
+The application now uses localStorage for persistence and does not require backend credentials.
+See `.env.example` for any optional configuration variables.
 
 ---
 
@@ -286,7 +273,7 @@ VITE_GOOGLE_CLIENT_ID=
 1. `src/stores/authStore.ts` - Added group fetching on login/signup/session check
 2. `src/components/auth/ProtectedRoute.tsx` - Added loading state
 3. `src/components/groups/GroupMembersTab.tsx` - Fixed member display logic
-4. `.env` - Created with Supabase credentials
+4. `.env` - Updated (Supabase credentials removed; localStorage is now the default)
 
 ### Database Changes
 - 13 tables created
@@ -322,14 +309,7 @@ VITE_GOOGLE_CLIENT_ID=
 ### Key Documentation Files
 - `DATABASE_SCHEMA.md` - Complete database structure
 - `IMPLEMENTATION_GUIDE.md` - Development guidelines
-- `SUPABASE_SETUP.md` - Supabase configuration guide
 - `memory.md` - Project conventions and patterns
-
-### Supabase Dashboard
-- **Project Dashboard**: https://app.supabase.com/project/pgzkxandyroceiofxsba
-- **Database Editor**: https://app.supabase.com/project/pgzkxandyroceiofxsba/editor
-- **SQL Editor**: https://app.supabase.com/project/pgzkxandyroceiofxsba/sql
-- **API Logs**: https://app.supabase.com/project/pgzkxandyroceiofxsba/logs
 
 ---
 

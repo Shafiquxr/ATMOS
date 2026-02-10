@@ -24,10 +24,12 @@ export function GroupsPage() {
     }
   }, [user, subscribeToRealtimeUpdates]);
 
-  // SIMPLIFIED: RLS policies already filter groups to only those the user can access
-  // (owner OR member), so we just use the groups directly from the store
-  const userGroups = groups;
-  console.log('[GroupsPage] Displaying groups:', { count: groups.length, groups: groups.map(g => ({ id: g.id, name: g.name })) });
+  // Filter groups to only those the current user owns or is a member of
+  const currentUserId = user?.id;
+  const userGroups = groups.filter((g) => {
+    if (g.owner_id === currentUserId) return true;
+    return members.some((m) => m.group_id === g.id && m.user_id === currentUserId);
+  });
 
   const filteredGroups = userGroups.filter((group) => {
     const matchesSearch = group.name.toLowerCase().includes(searchQuery.toLowerCase()) ||

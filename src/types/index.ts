@@ -8,7 +8,7 @@ export interface User {
   is_phone_verified: boolean;
   created_at: string;
   updated_at: string;
-  password?: string; // For local storage only
+  passwordHash?: string; // Salted SHA-256 hash for local auth
 }
 
 export type UserRole = 'owner' | 'organizer' | 'team_lead' | 'finance_rep' | 'member' | 'vendor';

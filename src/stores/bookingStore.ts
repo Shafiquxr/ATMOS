@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { Booking } from '../types';
+import { Booking, BookingStatus } from '../types';
 import { storageGet, storageSet } from '../utils/storage';
 import { generateUniqueId } from '../utils/idGenerator';
 
@@ -17,7 +17,7 @@ interface BookingState {
     createBooking: (booking: Partial<Booking>) => Promise<Booking>;
     updateBooking: (bookingId: string, updates: Partial<Booking>) => Promise<void>;
     deleteBooking: (bookingId: string) => Promise<void>;
-    updateBookingStatus: (bookingId: string, status: string) => Promise<void>;
+    updateBookingStatus: (bookingId: string, status: BookingStatus) => Promise<void>;
 
     // Utility
     getBookingsByGroup: (groupId: string) => Booking[];
@@ -138,11 +138,12 @@ export const useBookingStore = create<BookingState>((set, get) => ({
         }
     },
 
-    updateBookingStatus: async (bookingId: string, status: string) => {
-        await get().updateBooking(bookingId, {
-            status: status as any,
-            confirmed_at: status === 'confirmed' ? new Date().toISOString() : undefined,
-        });
+    updateBookingStatus: async (bookingId: string, status: BookingStatus) => {
+        const updates: Partial<Booking> = { status };
+        if (status === 'confirmed') {
+            updates.confirmed_at = new Date().toISOString();
+        }
+        await get().updateBooking(bookingId, updates);
     },
 
     getBookingsByGroup: (groupId: string) => {

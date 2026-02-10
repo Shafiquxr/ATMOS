@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import { User } from '../types';
 import { storageGet, storageSet, storageRemove } from '../utils/storage';
 import { generateUniqueId } from '../utils/idGenerator';
-import { sanitizeEmail, sanitizePhoneNumber } from '../utils/security';
+import { sanitizeEmail, sanitizePhoneNumber, hashPassword, verifyPassword } from '../utils/security';
 
 const AUTH_STORAGE_KEY = 'atmos_auth';
 const USERS_STORAGE_KEY = 'atmos_users';
@@ -45,10 +45,15 @@ export const useAuthStore = create<AuthState>((set, get) => ({
             const users = loadUsersFromStorage();
 
             const foundUser = users.find(
-                (u) => u.email.toLowerCase() === sanitizedEmail.toLowerCase() && u.password === password
+                (u) => u.email.toLowerCase() === sanitizedEmail.toLowerCase()
             );
 
-            if (!foundUser) {
+            if (!foundUser || !foundUser.passwordHash) {
+                throw new Error('Invalid email or password');
+            }
+
+            const isValid = await verifyPassword(password, foundUser.passwordHash);
+            if (!isValid) {
                 throw new Error('Invalid email or password');
             }
 
@@ -106,7 +111,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
                 is_phone_verified: false,
                 created_at: new Date().toISOString(),
                 updated_at: new Date().toISOString(),
-                password: data.password, // Store password for local auth
+                passwordHash: await hashPassword(data.password),
             };
 
             // Save to users list
