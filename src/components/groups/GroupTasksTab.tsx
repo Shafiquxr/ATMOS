@@ -18,8 +18,8 @@ interface GroupTasksTabProps {
 
 export function GroupTasksTab({ group }: GroupTasksTabProps) {
   const { user } = useAuthStore();
-  const { getGroupMembers } = useGroupStore();
-  const { getGroupTasks, addTask, updateTask, deleteTask } = useTaskStore();
+  const { members } = useGroupStore();
+  const { getTasksByGroup, createTask, updateTask, deleteTask } = useTaskStore();
   const { addToast } = useToastStore();
   const { addNotification } = useNotificationStore();
 
@@ -38,8 +38,8 @@ export function GroupTasksTab({ group }: GroupTasksTabProps) {
     deadline: '',
   });
 
-  const tasks = getGroupTasks(group.id);
-  const members = getGroupMembers(group.id);
+  const tasks = getTasksByGroup(group.id);
+  const groupMembers = members.filter((m) => m.group_id === group.id);
   const { users: allUsers } = useAuthStore();
   const isOwner = user?.id === group.owner_id;
 
@@ -53,7 +53,7 @@ export function GroupTasksTab({ group }: GroupTasksTabProps) {
     e.preventDefault();
 
     try {
-      const newTask = addTask({
+      const newTask = createTask({
         group_id: group.id,
         title: formData.title,
         description: formData.description,
@@ -230,9 +230,9 @@ export function GroupTasksTab({ group }: GroupTasksTabProps) {
                       {task.assignee_id && (
                         <span className="flex items-center gap-1">
                           <User size={14} />
-                          {allUsers.find(u => u.id === task.assignee_id || u.email === task.assignee_id)?.full_name || 
-                           members.find((m) => m.user_id === task.assignee_id)?.user?.full_name || 
-                           task.assignee_id}
+                          {allUsers.find(u => u.id === task.assignee_id || u.email === task.assignee_id)?.full_name ||
+                            members.find((m) => m.user_id === task.assignee_id)?.user?.full_name ||
+                            task.assignee_id}
                         </span>
                       )}
                       {task.deadline && (
@@ -353,9 +353,9 @@ export function GroupTasksTab({ group }: GroupTasksTabProps) {
                 <option value="">Unassigned</option>
                 {members.map((member) => (
                   <option key={member.id} value={member.user_id}>
-                    {allUsers.find(u => u.id === member.user_id || u.email === member.user_id)?.full_name || 
-                     member.user?.full_name || 
-                     member.user_id}
+                    {allUsers.find(u => u.id === member.user_id || u.email === member.user_id)?.full_name ||
+                      member.user?.full_name ||
+                      member.user_id}
                   </option>
                 ))}
               </select>

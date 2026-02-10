@@ -13,18 +13,18 @@ import { useAuthStore } from '../stores/authStore';
 export function TasksPage() {
   const { user } = useAuthStore();
   const { groups, members } = useGroupStore();
-  const { getGroupTasks, updateTask } = useTaskStore();
+  const { getTasksByGroup, updateTask } = useTaskStore();
   const { users: allUsers } = useAuthStore();
   const [filterStatus, setFilterStatus] = useState<TaskStatus | 'all'>('all');
   const [filterPriority, setFilterPriority] = useState<TaskPriority | 'all'>('all');
 
-  const userGroups = groups.filter((group) => 
-    group.owner_id === user?.id || 
+  const userGroups = groups.filter((group) =>
+    group.owner_id === user?.id ||
     members.some((m) => m.group_id === group.id && (m.user_id === user?.id || m.user_id === user?.email))
   );
 
   // Get all tasks from all groups
-  const allTasks = userGroups.flatMap((group) => getGroupTasks(group.id));
+  const allTasks = userGroups.flatMap((group) => getTasksByGroup(group.id));
 
   const filteredTasks = allTasks.filter((task) => {
     const matchesStatus = filterStatus === 'all' || task.status === filterStatus;
@@ -38,7 +38,7 @@ export function TasksPage() {
 
   const getGroupForTask = (taskId: string) => {
     for (const group of groups) {
-      const tasks = getGroupTasks(group.id);
+      const tasks = getTasksByGroup(group.id);
       if (tasks.some((t) => t.id === taskId)) {
         return group;
       }
@@ -152,8 +152,8 @@ export function TasksPage() {
                           {task.assignee_id && (
                             <span className="flex items-center gap-1">
                               <User size={14} />
-                              {allUsers.find(u => u.id === task.assignee_id || u.email === task.assignee_id)?.full_name || 
-                               task.assignee_id}
+                              {allUsers.find(u => u.id === task.assignee_id || u.email === task.assignee_id)?.full_name ||
+                                task.assignee_id}
                             </span>
                           )}
                           {task.deadline && (

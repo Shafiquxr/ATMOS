@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import { 
-  ArrowLeft, Users, CheckSquare, Wallet, Calendar, 
+import {
+  ArrowLeft, Users, CheckSquare, Wallet, Calendar,
   Building2, FileText, MoreVertical, Edit, Trash2, Share2
 } from 'lucide-react';
 import { AppLayout } from '../layouts/AppLayout';
@@ -29,9 +29,9 @@ export function GroupDetailPage() {
   const navigate = useNavigate();
   const { user } = useAuthStore();
   const { groups, currentGroup, setCurrentGroup, deleteGroup } = useGroupStore();
-  const { wallets, fetchGroupWallet, createGroupWallet } = useWalletStore();
-  const { getGroupTasks } = useTaskStore();
-  const { getGroupBookings } = useBookingStore();
+  const { wallets, fetchWallet, createWallet } = useWalletStore();
+  const { getTasksByGroup } = useTaskStore();
+  const { getBookingsByGroup } = useBookingStore();
   const { addNotification } = useNotificationStore();
 
   const [activeTab, setActiveTab] = useState<TabType>('overview');
@@ -48,9 +48,9 @@ export function GroupDetailPage() {
 
   useEffect(() => {
     if (group) {
-      createGroupWallet(group.id);
+      createWallet(group.id);
     }
-  }, [group, createGroupWallet]);
+  }, [group, createWallet]);
 
   if (!group) {
     return (
@@ -67,19 +67,25 @@ export function GroupDetailPage() {
   }
 
   const wallet = wallets.find((w) => w.group_id === group.id);
-  const tasks = getGroupTasks(group.id);
-  const bookings = getGroupBookings(group.id);
+  const tasks = getTasksByGroup(group.id);
+  const bookings = getBookingsByGroup(group.id);
   const groupMembers = useGroupStore((state) => state.members.filter(m => m.group_id === group.id));
 
   useEffect(() => {
-    if (group.id && !wallet) {
-      fetchGroupWallet(group.id).catch(() => {
-        createGroupWallet(group.id);
-      });
+    if (group?.id) {
+      if (!wallet) {
+        fetchWallet(group.id).catch(() => {
+          createWallet(group.id);
+        });
+      }
+      // Explicitly fetch all members for this group to ensure the count and list are correct
+      useGroupStore.getState().fetchMembers(group.id);
     }
-  }, [group.id, wallet, fetchGroupWallet, createGroupWallet]);
+  }, [group?.id, wallet, fetchWallet, createWallet]);
 
-  const isMember = group.owner_id === user?.id || groupMembers.some(m => m.user_id === user?.id || m.user_id === user?.email);
+  // Check if user is a member of this group
+  const allMembers = useGroupStore((state) => state.members);
+  const isMember = group.owner_id === user?.id || allMembers.some(m => m.group_id === group.id && (m.user_id === user?.id || m.user_id === user?.email));
 
   if (!isMember) {
     return (
@@ -158,13 +164,13 @@ export function GroupDetailPage() {
               <p className="text-nostalgic-600 mt-1">{group.description || 'No description'}</p>
             </div>
           </div>
-          
+
           <div className="flex items-center gap-2">
             <div className="relative">
               <Button variant="outline" onClick={() => setIsMenuOpen(!isMenuOpen)}>
                 <MoreVertical size={20} />
               </Button>
-              
+
               {isMenuOpen && (
                 <div className="absolute right-0 mt-2 w-48 bg-white border-2 border-black shadow-retro-lg z-10">
                   {isOwner && (
@@ -218,12 +224,14 @@ export function GroupDetailPage() {
               return (
                 <button
                   key={tab.id}
-                  onClick={() => setActiveTab(tab.id)}
-                  className={`flex items-center gap-2 px-4 py-3 font-medium whitespace-nowrap border-b-2 transition-colors ${
-                    activeTab === tab.id
-                      ? 'border-black bg-black text-white'
-                      : 'border-transparent hover:bg-nostalgic-100'
-                  }`}
+                  onClick={() => {
+                    console.log('Tab clicked:', tab.id);
+                    setActiveTab(tab.id);
+                  }}
+                  className={`flex items-center gap-2 px-4 py-3 font-medium whitespace-nowrap border-b-2 transition-colors ${activeTab === tab.id
+                    ? 'border-black bg-black text-white'
+                    : 'border-transparent hover:bg-nostalgic-100'
+                    }`}
                 >
                   <Icon size={18} />
                   {tab.label}

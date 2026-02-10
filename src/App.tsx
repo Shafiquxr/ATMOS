@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { LoginPage } from './pages/auth/LoginPage';
 import { SignUpPage } from './pages/auth/SignUpPage';
@@ -10,9 +11,19 @@ import { WalletPage } from './pages/WalletPage';
 import { ProtectedRoute } from './components/auth/ProtectedRoute';
 import { ToastContainer } from './components/ui/Toast';
 import { useToastStore } from './stores/toastStore';
+import { useAuthStore } from './stores/authStore';
+import { useGroupStore } from './stores/groupStore';
 
 function App() {
   const { toasts, removeToast } = useToastStore();
+  const { isAuthenticated, user } = useAuthStore();
+  const { fetchGroups } = useGroupStore();
+
+  useEffect(() => {
+    if (isAuthenticated && user) {
+      fetchGroups();
+    }
+  }, [isAuthenticated, user, fetchGroups]);
 
   return (
     <BrowserRouter>

@@ -15,10 +15,10 @@ export function WalletPage() {
   const [selectedGroup, setSelectedGroup] = useState<string>('all');
   const { groups, members } = useGroupStore();
   const { user } = useAuthStore();
-  const { wallets, getGroupTransactions } = useWalletStore();
+  const { wallets, transactions } = useWalletStore();
 
-  const userGroups = groups.filter((group) => 
-    group.owner_id === user?.id || 
+  const userGroups = groups.filter((group) =>
+    group.owner_id === user?.id ||
     members.some((m) => m.group_id === group.id && (m.user_id === user?.id || m.user_id === user?.email))
   );
 
@@ -39,7 +39,7 @@ export function WalletPage() {
         walletStats.escrowBalance += wallet.escrow_balance;
         walletStats.pendingBalance += wallet.pending_balance || 0;
       }
-      allTransactions = [...allTransactions, ...getGroupTransactions(group.id)];
+      allTransactions = [...allTransactions, ...transactions.filter((t) => t.wallet_id === wallet?.id)];
     });
     allTransactions.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
   } else {
@@ -51,7 +51,7 @@ export function WalletPage() {
         pendingBalance: wallet.pending_balance,
       };
     }
-    allTransactions = getGroupTransactions(selectedGroup);
+    allTransactions = transactions.filter((t) => t.wallet_id === wallet?.id);
   }
 
   const getTransactionIcon = (type: TransactionType) => {
@@ -189,9 +189,8 @@ export function WalletPage() {
                       </div>
                     </div>
                     <div className="text-right">
-                      <p className={`text-lg font-mono font-bold ${
-                        transaction.type === 'collection' ? 'text-green-600' : 'text-red-600'
-                      }`}>
+                      <p className={`text-lg font-mono font-bold ${transaction.type === 'collection' ? 'text-green-600' : 'text-red-600'
+                        }`}>
                         {transaction.type === 'collection' ? '+' : '-'}{formatCurrency(transaction.amount)}
                       </p>
                       {transaction.payment_method && (

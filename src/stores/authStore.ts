@@ -1,261 +1,207 @@
 import { create } from 'zustand';
 import { User } from '../types';
-import { supabase } from '../utils/supabase';
 import { storageGet, storageSet, storageRemove } from '../utils/storage';
 import { generateUniqueId } from '../utils/idGenerator';
 import { sanitizeEmail, sanitizePhoneNumber } from '../utils/security';
 
 const AUTH_STORAGE_KEY = 'atmos_auth';
+const USERS_STORAGE_KEY = 'atmos_users';
 
 interface AuthState {
-  user: User | null;
-  isAuthenticated: boolean;
-  isLoading: boolean;
-  users: User[];
-  setUser: (user: User | null) => void;
-  setLoading: (loading: boolean) => void;
-  login: (email: string, password: string) => Promise<void>;
-  signup: (data: { full_name: string; email: string; phone: string; password: string }) => Promise<void>;
-  logout: () => Promise<void>;
-  loadFromStorage: () => void;
-  checkSession: () => Promise<void>;
-  fetchUsers: () => Promise<void>;
+    user: User | null;
+    isAuthenticated: boolean;
+    isLoading: boolean;
+    users: User[];
+    setUser: (user: User | null) => void;
+    setLoading: (loading: boolean) => void;
+    login: (email: string, password: string) => Promise<void>;
+    signup: (data: { full_name: string; email: string; phone: string; password: string }) => Promise<void>;
+    logout: () => Promise<void>;
+    loadFromStorage: () => void;
+    checkSession: () => Promise<void>;
+    fetchUsers: () => Promise<void>;
 }
 
-export const useAuthStore = create<AuthState>((set) => ({
-  user: null,
-  isAuthenticated: false,
-  isLoading: false,
-  users: [],
+const loadUsersFromStorage = (): User[] => {
+    return storageGet<User[]>(USERS_STORAGE_KEY, []);
+};
 
-  setUser: (user) => {
-    set({ user, isAuthenticated: !!user });
-  },
-  
-  setLoading: (loading) => set({ isLoading: loading }),
+export const useAuthStore = create<AuthState>((set, get) => ({
+    user: null,
+    isAuthenticated: false,
+    isLoading: true,
+    users: loadUsersFromStorage(),
 
-  login: async (email: string, password: string) => {
-    set({ isLoading: true });
-    try {
-      const sanitizedEmail = sanitizeEmail(email);
-      
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email: sanitizedEmail,
-        password: password,
-      });
+    setUser: (user) => {
+        set({ user, isAuthenticated: !!user });
+    },
 
-      if (error) {
-        throw new Error(error.message);
-      }
+    setLoading: (loading) => set({ isLoading: loading }),
 
-      if (!data.user) {
-        throw new Error('Invalid email or password');
-      }
+    login: async (email: string, password: string) => {
+        set({ isLoading: true });
+        try {
+            const sanitizedEmail = sanitizeEmail(email);
+            const users = loadUsersFromStorage();
 
-      const { data: profileData, error: profileError } = await supabase
-        .from('users')
-        .select('*')
-        .eq('id', data.user.id)
-        .single();
+            const foundUser = users.find(
+                (u) => u.email.toLowerCase() === sanitizedEmail.toLowerCase() && u.password === password
+            );
 
-      if (profileError) {
-        throw new Error('Failed to load user profile');
-      }
+            if (!foundUser) {
+                throw new Error('Invalid email or password');
+            }
 
-      const user: User = {
-        id: profileData.id,
-        email: profileData.email,
-        full_name: profileData.full_name,
-        phone: profileData.phone,
-        avatar_url: profileData.avatar_url,
-        is_phone_verified: profileData.is_phone_verified || false,
-        created_at: profileData.created_at,
-        updated_at: profileData.updated_at,
-      };
+            const user: User = {
+                id: foundUser.id,
+                email: foundUser.email,
+                full_name: foundUser.full_name,
+                phone: foundUser.phone,
+                avatar_url: foundUser.avatar_url,
+                is_phone_verified: foundUser.is_phone_verified || false,
+                created_at: foundUser.created_at,
+                updated_at: foundUser.updated_at,
+            };
 
-      set({ 
-        user, 
-        isAuthenticated: true,
-      });
-      
-      storageSet(AUTH_STORAGE_KEY, user);
-      
-      const { useGroupStore } = await import('./groupStore');
-      await useGroupStore.getState().fetchGroups();
-      useGroupStore.getState().subscribeToRealtimeUpdates();
-    } catch (error) {
-      console.error('Login error:', error);
-      throw error;
-    } finally {
-      set({ isLoading: false });
-    }
-  },
+            set({
+                user,
+                isAuthenticated: true,
+            });
 
-  signup: async (data) => {
-    set({ isLoading: true });
-    try {
-      const sanitizedEmail = sanitizeEmail(data.email);
-      const sanitizedPhone = sanitizePhoneNumber(data.phone);
-      
-      const { data: authData, error } = await supabase.auth.signUp({
-        email: sanitizedEmail,
-        password: data.password,
-        options: {
-          data: {
-            full_name: data.full_name.trim(),
-            phone: sanitizedPhone,
-          },
-        },
-      });
+            storageSet(AUTH_STORAGE_KEY, user);
 
-      if (error) {
-        throw new Error(error.message);
-      }
-
-      if (!authData.user) {
-        throw new Error('Failed to create user');
-      }
-
-      const userData = {
-        id: authData.user.id,
-        email: sanitizedEmail,
-        full_name: data.full_name.trim(),
-        phone: sanitizedPhone,
-        is_phone_verified: false,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      };
-
-      const { error: insertError } = await supabase
-        .from('users')
-        .insert([userData]);
-
-      if (insertError) {
-        throw new Error('Failed to save user profile');
-      }
-
-      const user: User = {
-        ...userData,
-        avatar_url: undefined,
-      };
-
-      set({ 
-        user, 
-        isAuthenticated: true,
-      });
-      
-      storageSet(AUTH_STORAGE_KEY, user);
-      
-      const { useGroupStore } = await import('./groupStore');
-      useGroupStore.getState().subscribeToRealtimeUpdates();
-    } catch (error) {
-      console.error('Signup error:', error);
-      throw error;
-    } finally {
-      set({ isLoading: false });
-    }
-  },
-
-  logout: async () => {
-    try {
-      const { useGroupStore } = await import('./groupStore');
-      useGroupStore.getState().clearLocalData();
-      
-      await supabase.auth.signOut();
-    } catch (error) {
-      console.error('Logout error:', error);
-    } finally {
-      set({ user: null, isAuthenticated: false });
-      storageRemove(AUTH_STORAGE_KEY);
-    }
-  },
-
-  loadFromStorage: () => {
-    const savedUser = storageGet<User | null>(AUTH_STORAGE_KEY, null);
-    set({ 
-      user: savedUser, 
-      isAuthenticated: !!savedUser,
-    });
-  },
-
-  checkSession: async () => {
-    try {
-      const { data: { session }, error } = await supabase.auth.getSession();
-      
-      if (error) {
-        throw error;
-      }
-
-      if (session?.user) {
-        const { data: profileData, error: profileError } = await supabase
-          .from('users')
-          .select('*')
-          .eq('id', session.user.id)
-          .single();
-
-        if (!profileError && profileData) {
-          const user: User = {
-            id: profileData.id,
-            email: profileData.email,
-            full_name: profileData.full_name,
-            phone: profileData.phone,
-            avatar_url: profileData.avatar_url,
-            is_phone_verified: profileData.is_phone_verified || false,
-            created_at: profileData.created_at,
-            updated_at: profileData.updated_at,
-          };
-
-          set({ 
-            user, 
-            isAuthenticated: true,
-          });
-          
-          storageSet(AUTH_STORAGE_KEY, user);
-          
-          const { useGroupStore } = await import('./groupStore');
-          await useGroupStore.getState().fetchGroups();
-          useGroupStore.getState().subscribeToRealtimeUpdates();
-          
-          return;
+            // Trigger group store initialization
+            const { useGroupStore } = await import('./groupStore');
+            await useGroupStore.getState().fetchGroups();
+        } catch (error) {
+            console.error('Login error:', error);
+            throw error;
+        } finally {
+            set({ isLoading: false });
         }
-      }
-      
-      set({ user: null, isAuthenticated: false });
-      storageRemove(AUTH_STORAGE_KEY);
-    } catch (error) {
-      console.error('Session check error:', error);
-      set({ user: null, isAuthenticated: false });
-      storageRemove(AUTH_STORAGE_KEY);
-    }
-  },
+    },
 
-  fetchUsers: async () => {
-    set({ isLoading: true });
-    try {
-      const { data, error } = await supabase
-        .from('users')
-        .select('*');
+    signup: async (data) => {
+        set({ isLoading: true });
+        try {
+            const sanitizedEmail = sanitizeEmail(data.email);
+            const sanitizedPhone = sanitizePhoneNumber(data.phone);
+            const users = loadUsersFromStorage();
 
-      if (error) throw error;
+            // Check if email already exists
+            const existingUser = users.find(
+                (u) => u.email.toLowerCase() === sanitizedEmail.toLowerCase()
+            );
 
-      const users: User[] = (data || []).map(u => ({
-        id: u.id,
-        email: u.email,
-        full_name: u.full_name,
-        phone: u.phone,
-        avatar_url: u.avatar_url,
-        is_phone_verified: u.is_phone_verified || false,
-        created_at: u.created_at,
-        updated_at: u.updated_at,
-      }));
+            if (existingUser) {
+                throw new Error('Email already exists');
+            }
 
-      set({ users });
-    } catch (error) {
-      console.error('Failed to fetch users:', error);
-    } finally {
-      set({ isLoading: false });
-    }
-  },
+            const newUser: User = {
+                id: generateUniqueId(),
+                email: sanitizedEmail,
+                full_name: data.full_name.trim(),
+                phone: sanitizedPhone,
+                avatar_url: undefined,
+                is_phone_verified: false,
+                created_at: new Date().toISOString(),
+                updated_at: new Date().toISOString(),
+                password: data.password, // Store password for local auth
+            };
+
+            // Save to users list
+            const updatedUsers = [...users, newUser];
+            storageSet(USERS_STORAGE_KEY, updatedUsers);
+            set({ users: updatedUsers });
+
+            // Create user without password for session
+            const sessionUser: User = {
+                id: newUser.id,
+                email: newUser.email,
+                full_name: newUser.full_name,
+                phone: newUser.phone,
+                avatar_url: newUser.avatar_url,
+                is_phone_verified: newUser.is_phone_verified,
+                created_at: newUser.created_at,
+                updated_at: newUser.updated_at,
+            };
+
+            set({
+                user: sessionUser,
+                isAuthenticated: true,
+            });
+
+            storageSet(AUTH_STORAGE_KEY, sessionUser);
+        } catch (error) {
+            console.error('Signup error:', error);
+            throw error;
+        } finally {
+            set({ isLoading: false });
+        }
+    },
+
+    logout: async () => {
+        try {
+            const { useGroupStore } = await import('./groupStore');
+            useGroupStore.getState().clearLocalData();
+        } catch (error) {
+            console.error('Logout error:', error);
+        } finally {
+            set({ user: null, isAuthenticated: false });
+            storageRemove(AUTH_STORAGE_KEY);
+        }
+    },
+
+    loadFromStorage: () => {
+        const savedUser = storageGet<User | null>(AUTH_STORAGE_KEY, null);
+        set({
+            user: savedUser,
+            isAuthenticated: !!savedUser,
+            isLoading: false,
+            users: loadUsersFromStorage(),
+        });
+    },
+
+    checkSession: async () => {
+        console.log('[checkSession] Starting session check...');
+        try {
+            const savedUser = storageGet<User | null>(AUTH_STORAGE_KEY, null);
+
+            if (savedUser) {
+                set({
+                    user: savedUser,
+                    isAuthenticated: true,
+                });
+
+                // Initialize group store
+                const { useGroupStore } = await import('./groupStore');
+                await useGroupStore.getState().fetchGroups();
+                return;
+            }
+
+            set({ user: null, isAuthenticated: false });
+            storageRemove(AUTH_STORAGE_KEY);
+        } catch (error) {
+            console.error('Session check error:', error);
+            set({ user: null, isAuthenticated: false });
+            storageRemove(AUTH_STORAGE_KEY);
+        } finally {
+            set({ isLoading: false });
+        }
+    },
+
+    fetchUsers: async () => {
+        set({ isLoading: true });
+        try {
+            const users = loadUsersFromStorage();
+            set({ users });
+        } catch (error) {
+            console.error('Failed to fetch users:', error);
+        } finally {
+            set({ isLoading: false });
+        }
+    },
 }));
 
+// Initialize session check
 useAuthStore.getState().checkSession();

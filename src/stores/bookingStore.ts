@@ -2,133 +2,173 @@ import { create } from 'zustand';
 import { Booking } from '../types';
 import { storageGet, storageSet } from '../utils/storage';
 import { generateUniqueId } from '../utils/idGenerator';
-import { useWalletStore } from './walletStore';
 
 const BOOKINGS_STORAGE_KEY = 'atmos_bookings';
 
 interface BookingState {
-  bookings: Booking[];
-  isLoading: boolean;
-  
-  setBookings: (bookings: Booking[]) => void;
-  addBooking: (booking: Omit<Booking, 'id' | 'status' | 'created_at'>) => Booking;
-  updateBooking: (id: string, updates: Partial<Booking>) => void;
-  cancelBooking: (id: string) => void;
-  confirmBooking: (id: string) => void;
-  getGroupBookings: (groupId: string) => Booking[];
-  getVendorBookings: (vendorId: string) => Booking[];
-  getPendingBookings: (groupId: string) => Booking[];
-  
-  loadFromStorage: () => void;
-  saveToStorage: () => void;
+    bookings: Booking[];
+    currentBooking: Booking | null;
+    isLoading: boolean;
+    error: string | null;
+
+    // Booking actions
+    fetchBookings: (groupId: string) => Promise<void>;
+    fetchBookingById: (bookingId: string) => Promise<Booking | null>;
+    createBooking: (booking: Partial<Booking>) => Promise<Booking>;
+    updateBooking: (bookingId: string, updates: Partial<Booking>) => Promise<void>;
+    deleteBooking: (bookingId: string) => Promise<void>;
+    updateBookingStatus: (bookingId: string, status: string) => Promise<void>;
+
+    // Utility
+    getBookingsByGroup: (groupId: string) => Booking[];
+    getBookingsByVendor: (vendorId: string) => Booking[];
+    getBookingStats: (groupId: string) => { total: number; confirmed: number; pending: number; completed: number };
 }
 
 const loadBookingsFromStorage = (): Booking[] => {
-  return storageGet<Booking[]>(BOOKINGS_STORAGE_KEY, []);
+    return storageGet<Booking[]>(BOOKINGS_STORAGE_KEY, []);
 };
 
 export const useBookingStore = create<BookingState>((set, get) => ({
-  bookings: loadBookingsFromStorage(),
-  isLoading: false,
+    bookings: [],
+    currentBooking: null,
+    isLoading: false,
+    error: null,
 
-  setBookings: (bookings) => {
-    set({ bookings });
-    storageSet(BOOKINGS_STORAGE_KEY, bookings);
-  },
+    fetchBookings: async (groupId: string) => {
+        set({ isLoading: true });
+        try {
+            const allBookings = loadBookingsFromStorage();
+            const groupBookings = allBookings.filter((b) => b.group_id === groupId);
+            set({ bookings: groupBookings });
+        } catch (error) {
+            console.error('Failed to fetch bookings:', error);
+            set({ error: 'Failed to fetch bookings' });
+        } finally {
+            set({ isLoading: false });
+        }
+    },
 
-  addBooking: (bookingData) => {
-    const newBooking: Booking = {
-      id: generateUniqueId(),
-      ...bookingData,
-      status: 'pending',
-      created_at: new Date().toISOString(),
-    };
+    fetchBookingById: async (bookingId: string) => {
+        try {
+            const bookings = loadBookingsFromStorage();
+            const booking = bookings.find((b) => b.id === bookingId) || null;
+            if (booking) {
+                set({ currentBooking: booking });
+            }
+            return booking;
+        } catch (error) {
+            console.error('Failed to fetch booking:', error);
+            return null;
+        }
+    },
 
-    const updatedBookings = [...get().bookings, newBooking];
-    set({ bookings: updatedBookings });
-    storageSet(BOOKINGS_STORAGE_KEY, updatedBookings);
+    createBooking: async (bookingData: Partial<Booking>) => {
+        set({ isLoading: true });
+        try {
+            const { useAuthStore } = await import('./authStore');
+            const currentUser = useAuthStore.getState().user;
 
-    return newBooking;
-  },
+            const bookings = loadBookingsFromStorage();
+            const newBooking: Booking = {
+                id: generateUniqueId(),
+                group_id: bookingData.group_id || '',
+                vendor_id: bookingData.vendor_id || '',
+                created_by: currentUser?.id || '',
+                booking_date: bookingData.booking_date || new Date().toISOString(),
+                amount: bookingData.amount || 0,
+                advance_amount: bookingData.advance_amount || 0,
+                terms: bookingData.terms,
+                status: 'pending',
+                created_at: new Date().toISOString(),
+            };
 
-  updateBooking: (id, updates) => {
-    const updatedBookings = get().bookings.map((b) => 
-      b.id === id ? { ...b, ...updates } : b
-    );
-    
-    set({ bookings: updatedBookings });
-    storageSet(BOOKINGS_STORAGE_KEY, updatedBookings);
-  },
+            const updatedBookings = [...bookings, newBooking];
+            storageSet(BOOKINGS_STORAGE_KEY, updatedBookings);
+            set({ bookings: updatedBookings.filter((b) => b.group_id === newBooking.group_id) });
 
-  cancelBooking: (id) => {
-    const booking = get().bookings.find((b) => b.id === id);
-    if (!booking) return;
+            return newBooking;
+        } catch (error) {
+            console.error('Failed to create booking:', error);
+            throw error;
+        } finally {
+            set({ isLoading: false });
+        }
+    },
 
-    if (booking.escrow_transaction_id) {
-      try {
-        useWalletStore.getState().releaseEscrow(booking.group_id, booking.escrow_transaction_id);
-      } catch (error) {
-        console.error('Error releasing escrow:', error);
-      }
-    }
+    updateBooking: async (bookingId: string, updates: Partial<Booking>) => {
+        try {
+            const bookings = loadBookingsFromStorage();
+            const updatedBookings = bookings.map((b) =>
+                b.id === bookingId ? { ...b, ...updates } : b
+            );
+            storageSet(BOOKINGS_STORAGE_KEY, updatedBookings);
 
-    const updatedBookings = get().bookings.map((b) => 
-      b.id === id ? { ...b, status: 'cancelled' as const } : b
-    );
-    
-    set({ bookings: updatedBookings });
-    storageSet(BOOKINGS_STORAGE_KEY, updatedBookings);
-  },
+            const currentGroupId = get().bookings[0]?.group_id;
+            if (currentGroupId) {
+                set({ bookings: updatedBookings.filter((b) => b.group_id === currentGroupId) });
+            }
 
-  confirmBooking: (id) => {
-    const booking = get().bookings.find((b) => b.id === id);
-    if (!booking) return;
+            if (get().currentBooking?.id === bookingId) {
+                set({ currentBooking: updatedBookings.find((b) => b.id === bookingId) });
+            }
+        } catch (error) {
+            console.error('Failed to update booking:', error);
+            throw error;
+        }
+    },
 
-    const updatedBookings = get().bookings.map((b) => 
-      b.id === id 
-        ? { 
-            ...b, 
-            status: 'confirmed' as const,
-            confirmed_at: new Date().toISOString(),
-          } 
-        : b
-    );
-    
-    set({ bookings: updatedBookings });
-    storageSet(BOOKINGS_STORAGE_KEY, updatedBookings);
-  },
+    deleteBooking: async (bookingId: string) => {
+        try {
+            const bookings = loadBookingsFromStorage();
+            const updatedBookings = bookings.filter((b) => b.id !== bookingId);
+            storageSet(BOOKINGS_STORAGE_KEY, updatedBookings);
 
-  getGroupBookings: (groupId) => {
-    return get().bookings
-      .filter((b) => b.group_id === groupId)
-      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
-  },
+            const currentGroupId = get().bookings[0]?.group_id;
+            if (currentGroupId) {
+                set({ bookings: updatedBookings.filter((b) => b.group_id === currentGroupId) });
+            }
 
-  getVendorBookings: (vendorId) => {
-    return get().bookings.filter((b) => b.vendor_id === vendorId);
-  },
+            if (get().currentBooking?.id === bookingId) {
+                set({ currentBooking: null });
+            }
+        } catch (error) {
+            console.error('Failed to delete booking:', error);
+            throw error;
+        }
+    },
 
-  getPendingBookings: (groupId) => {
-    return get().bookings.filter((b) => 
-      b.group_id === groupId && b.status === 'pending'
-    );
-  },
+    updateBookingStatus: async (bookingId: string, status: string) => {
+        await get().updateBooking(bookingId, {
+            status: status as any,
+            confirmed_at: status === 'confirmed' ? new Date().toISOString() : undefined,
+        });
+    },
 
-  loadFromStorage: () => {
-    set({
-      bookings: loadBookingsFromStorage(),
-    });
-  },
+    getBookingsByGroup: (groupId: string) => {
+        const bookings = loadBookingsFromStorage();
+        return bookings.filter((b) => b.group_id === groupId);
+    },
 
-  saveToStorage: () => {
-    const { bookings } = get();
-    storageSet(BOOKINGS_STORAGE_KEY, bookings);
-  },
+    getBookingsByVendor: (vendorId: string) => {
+        const bookings = loadBookingsFromStorage();
+        return bookings.filter((b) => b.vendor_id === vendorId);
+    },
+
+    getBookingStats: (groupId: string) => {
+        const bookings = loadBookingsFromStorage().filter((b) => b.group_id === groupId);
+        return {
+            total: bookings.length,
+            confirmed: bookings.filter((b) => b.status === 'confirmed').length,
+            pending: bookings.filter((b) => b.status === 'pending').length,
+            completed: bookings.filter((b) => b.status === 'completed').length,
+        };
+    },
 }));
 
 // Listen for storage events to sync across tabs
 window.addEventListener('storage', (event) => {
-  if (event.key === BOOKINGS_STORAGE_KEY) {
-    useBookingStore.getState().loadFromStorage();
-  }
+    if (event.key === BOOKINGS_STORAGE_KEY) {
+        // Refresh data on storage change
+    }
 });

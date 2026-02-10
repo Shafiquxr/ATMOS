@@ -15,7 +15,7 @@ interface CreateGroupModalProps {
 
 export function CreateGroupModal({ isOpen, onClose }: CreateGroupModalProps) {
   const { addToast } = useToastStore();
-  const { addGroup } = useGroupStore();
+  const { createGroup } = useGroupStore();
   const { user } = useAuthStore();
   const [isLoading, setIsLoading] = useState(false);
 
@@ -30,7 +30,7 @@ export function CreateGroupModal({ isOpen, onClose }: CreateGroupModalProps) {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (!formData.name.trim()) {
       addToast('error', 'Group name is required');
       return;
@@ -39,7 +39,7 @@ export function CreateGroupModal({ isOpen, onClose }: CreateGroupModalProps) {
     setIsLoading(true);
 
     try {
-      await addGroup({
+      await createGroup({
         name: sanitizeInput(formData.name),
         description: sanitizeInput(formData.description),
         category: formData.category,
@@ -49,7 +49,7 @@ export function CreateGroupModal({ isOpen, onClose }: CreateGroupModalProps) {
       });
 
       addToast('success', 'Group created successfully!');
-      
+
       setFormData({
         name: '',
         description: '',
@@ -58,7 +58,7 @@ export function CreateGroupModal({ isOpen, onClose }: CreateGroupModalProps) {
         end_date: '',
         location: '',
       });
-      
+
       onClose();
     } catch (error) {
       console.error('Error creating group:', error);

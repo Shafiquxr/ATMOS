@@ -4,180 +4,199 @@ import { storageGet, storageSet } from '../utils/storage';
 import { generateUniqueId } from '../utils/idGenerator';
 
 const VENDORS_STORAGE_KEY = 'atmos_vendors';
-const REVIEWS_STORAGE_KEY = 'atmos_vendor_reviews';
+const VENDOR_REVIEWS_STORAGE_KEY = 'atmos_vendor_reviews';
 
 interface VendorState {
-  vendors: Vendor[];
-  reviews: VendorReview[];
-  isLoading: boolean;
-  
-  setVendors: (vendors: Vendor[]) => void;
-  addVendor: (vendor: Omit<Vendor, 'id' | 'created_at'>) => Vendor;
-  updateVendor: (id: string, updates: Partial<Vendor>) => void;
-  deleteVendor: (id: string) => void;
-  getVendorsByCategory: (category: Vendor['category']) => Vendor[];
-  
-  addReview: (review: Omit<VendorReview, 'id' | 'created_at'>) => VendorReview;
-  deleteReview: (reviewId: string) => void;
-  getVendorReviews: (vendorId: string) => VendorReview[];
-  getAverageRating: (vendorId: string) => number;
-  
-  loadFromStorage: () => void;
-  saveToStorage: () => void;
+    vendors: Vendor[];
+    currentVendor: Vendor | null;
+    reviews: VendorReview[];
+    isLoading: boolean;
+    error: string | null;
+
+    // Vendor actions
+    fetchVendors: (category?: string) => Promise<void>;
+    fetchVendorById: (vendorId: string) => Promise<Vendor | null>;
+    createVendor: (vendor: Partial<Vendor>) => Promise<Vendor>;
+    updateVendor: (vendorId: string, updates: Partial<Vendor>) => Promise<void>;
+    deleteVendor: (vendorId: string) => Promise<void>;
+
+    // Review actions
+    fetchReviews: (vendorId: string) => Promise<void>;
+    addReview: (review: Partial<VendorReview>) => Promise<VendorReview>;
+
+    // Utility
+    searchVendors: (query: string) => Vendor[];
+    getVendorsByCategory: (category: string) => Vendor[];
 }
 
 const loadVendorsFromStorage = (): Vendor[] => {
-  return storageGet<Vendor[]>(VENDORS_STORAGE_KEY, []);
+    return storageGet<Vendor[]>(VENDORS_STORAGE_KEY, []);
 };
 
 const loadReviewsFromStorage = (): VendorReview[] => {
-  return storageGet<VendorReview[]>(REVIEWS_STORAGE_KEY, []);
+    return storageGet<VendorReview[]>(VENDOR_REVIEWS_STORAGE_KEY, []);
 };
 
 export const useVendorStore = create<VendorState>((set, get) => ({
-  vendors: loadVendorsFromStorage(),
-  reviews: loadReviewsFromStorage(),
-  isLoading: false,
+    vendors: [],
+    currentVendor: null,
+    reviews: [],
+    isLoading: false,
+    error: null,
 
-  setVendors: (vendors) => {
-    set({ vendors });
-    storageSet(VENDORS_STORAGE_KEY, vendors);
-  },
+    fetchVendors: async (category?: string) => {
+        set({ isLoading: true });
+        try {
+            let vendors = loadVendorsFromStorage();
+            if (category) {
+                vendors = vendors.filter((v) => v.category === category);
+            }
+            set({ vendors });
+        } catch (error) {
+            console.error('Failed to fetch vendors:', error);
+            set({ error: 'Failed to fetch vendors' });
+        } finally {
+            set({ isLoading: false });
+        }
+    },
 
-  addVendor: (vendorData) => {
-    const newVendor: Vendor = {
-      id: generateUniqueId(),
-      ...vendorData,
-      rating: 0,
-      total_reviews: 0,
-      created_at: new Date().toISOString(),
-    };
+    fetchVendorById: async (vendorId: string) => {
+        try {
+            const vendors = loadVendorsFromStorage();
+            const vendor = vendors.find((v) => v.id === vendorId) || null;
+            if (vendor) {
+                set({ currentVendor: vendor });
+            }
+            return vendor;
+        } catch (error) {
+            console.error('Failed to fetch vendor:', error);
+            return null;
+        }
+    },
 
-    const updatedVendors = [...get().vendors, newVendor];
-    set({ vendors: updatedVendors });
-    storageSet(VENDORS_STORAGE_KEY, updatedVendors);
+    createVendor: async (vendorData: Partial<Vendor>) => {
+        set({ isLoading: true });
+        try {
+            const vendors = loadVendorsFromStorage();
+            const newVendor: Vendor = {
+                id: generateUniqueId(),
+                name: vendorData.name || 'New Vendor',
+                category: vendorData.category || 'other',
+                description: vendorData.description,
+                contact_name: vendorData.contact_name,
+                contact_phone: vendorData.contact_phone,
+                contact_email: vendorData.contact_email,
+                address: vendorData.address,
+                rating: 0,
+                total_reviews: 0,
+                price_range: vendorData.price_range,
+                created_at: new Date().toISOString(),
+            };
 
-    return newVendor;
-  },
+            const updatedVendors = [...vendors, newVendor];
+            storageSet(VENDORS_STORAGE_KEY, updatedVendors);
+            set({ vendors: updatedVendors });
 
-  updateVendor: (id, updates) => {
-    const updatedVendors = get().vendors.map((v) => 
-      v.id === id ? { ...v, ...updates } : v
-    );
-    
-    set({ vendors: updatedVendors });
-    storageSet(VENDORS_STORAGE_KEY, updatedVendors);
-  },
+            return newVendor;
+        } catch (error) {
+            console.error('Failed to create vendor:', error);
+            throw error;
+        } finally {
+            set({ isLoading: false });
+        }
+    },
 
-  deleteVendor: (id) => {
-    const updatedVendors = get().vendors.filter((v) => v.id !== id);
-    const updatedReviews = get().reviews.filter((r) => r.vendor_id !== id);
+    updateVendor: async (vendorId: string, updates: Partial<Vendor>) => {
+        try {
+            const vendors = loadVendorsFromStorage();
+            const updatedVendors = vendors.map((v) =>
+                v.id === vendorId ? { ...v, ...updates } : v
+            );
+            storageSet(VENDORS_STORAGE_KEY, updatedVendors);
+            set({ vendors: updatedVendors });
 
-    set({ 
-      vendors: updatedVendors,
-      reviews: updatedReviews
-    });
+            if (get().currentVendor?.id === vendorId) {
+                set({ currentVendor: updatedVendors.find((v) => v.id === vendorId) });
+            }
+        } catch (error) {
+            console.error('Failed to update vendor:', error);
+            throw error;
+        }
+    },
 
-    storageSet(VENDORS_STORAGE_KEY, updatedVendors);
-    storageSet(REVIEWS_STORAGE_KEY, updatedReviews);
-  },
+    deleteVendor: async (vendorId: string) => {
+        try {
+            const vendors = loadVendorsFromStorage();
+            const updatedVendors = vendors.filter((v) => v.id !== vendorId);
+            storageSet(VENDORS_STORAGE_KEY, updatedVendors);
+            set({ vendors: updatedVendors });
 
-  getVendorsByCategory: (category) => {
-    return get().vendors.filter((v) => v.category === category);
-  },
+            if (get().currentVendor?.id === vendorId) {
+                set({ currentVendor: null });
+            }
+        } catch (error) {
+            console.error('Failed to delete vendor:', error);
+            throw error;
+        }
+    },
 
-  addReview: (reviewData) => {
-    const newReview: VendorReview = {
-      id: generateUniqueId(),
-      ...reviewData,
-      created_at: new Date().toISOString(),
-    };
+    fetchReviews: async (vendorId: string) => {
+        try {
+            const allReviews = loadReviewsFromStorage();
+            const vendorReviews = allReviews.filter((r) => r.vendor_id === vendorId);
+            set({ reviews: vendorReviews });
+        } catch (error) {
+            console.error('Failed to fetch reviews:', error);
+        }
+    },
 
-    const updatedReviews = [...get().reviews, newReview];
-    
-    const vendorReviews = updatedReviews.filter((r) => r.vendor_id === reviewData.vendor_id);
-    const avgRating = vendorReviews.length > 0
-      ? vendorReviews.reduce((sum, r) => sum + r.rating, 0) / vendorReviews.length
-      : 0;
+    addReview: async (reviewData: Partial<VendorReview>) => {
+        const reviews = loadReviewsFromStorage();
+        const newReview: VendorReview = {
+            id: generateUniqueId(),
+            vendor_id: reviewData.vendor_id || '',
+            booking_id: reviewData.booking_id || '',
+            user_id: reviewData.user_id || '',
+            rating: reviewData.rating || 5,
+            review: reviewData.review,
+            created_at: new Date().toISOString(),
+        };
 
-    const updatedVendors = get().vendors.map((v) =>
-      v.id === reviewData.vendor_id
-        ? {
-            ...v,
-            rating: Math.round(avgRating * 10) / 10,
+        const updatedReviews = [...reviews, newReview];
+        storageSet(VENDOR_REVIEWS_STORAGE_KEY, updatedReviews);
+        set({ reviews: updatedReviews.filter((r) => r.vendor_id === newReview.vendor_id) });
+
+        // Update vendor rating
+        const vendorReviews = updatedReviews.filter((r) => r.vendor_id === newReview.vendor_id);
+        const avgRating = vendorReviews.reduce((acc, r) => acc + r.rating, 0) / vendorReviews.length;
+        await get().updateVendor(newReview.vendor_id, {
+            rating: avgRating,
             total_reviews: vendorReviews.length,
-          }
-        : v
-    );
+        });
 
-    set({ 
-      reviews: updatedReviews,
-      vendors: updatedVendors
-    });
+        return newReview;
+    },
 
-    storageSet(REVIEWS_STORAGE_KEY, updatedReviews);
-    storageSet(VENDORS_STORAGE_KEY, updatedVendors);
+    searchVendors: (query: string) => {
+        const vendors = loadVendorsFromStorage();
+        const lowerQuery = query.toLowerCase();
+        return vendors.filter(
+            (v) =>
+                v.name.toLowerCase().includes(lowerQuery) ||
+                v.description?.toLowerCase().includes(lowerQuery) ||
+                v.category.toLowerCase().includes(lowerQuery)
+        );
+    },
 
-    return newReview;
-  },
-
-  deleteReview: (reviewId) => {
-    const review = get().reviews.find((r) => r.id === reviewId);
-    if (!review) return;
-
-    const updatedReviews = get().reviews.filter((r) => r.id !== reviewId);
-    
-    const vendorReviews = updatedReviews.filter((r) => r.vendor_id === review.vendor_id);
-    const avgRating = vendorReviews.length > 0
-      ? vendorReviews.reduce((sum, r) => sum + r.rating, 0) / vendorReviews.length
-      : 0;
-
-    const updatedVendors = get().vendors.map((v) =>
-      v.id === review.vendor_id
-        ? {
-            ...v,
-            rating: Math.round(avgRating * 10) / 10,
-            total_reviews: vendorReviews.length,
-          }
-        : v
-    );
-
-    set({ 
-      reviews: updatedReviews,
-      vendors: updatedVendors
-    });
-
-    storageSet(REVIEWS_STORAGE_KEY, updatedReviews);
-    storageSet(VENDORS_STORAGE_KEY, updatedVendors);
-  },
-
-  getVendorReviews: (vendorId) => {
-    return get().reviews.filter((r) => r.vendor_id === vendorId);
-  },
-
-  getAverageRating: (vendorId) => {
-    const vendorReviews = get().getVendorReviews(vendorId);
-    if (vendorReviews.length === 0) return 0;
-    return vendorReviews.reduce((sum, r) => sum + r.rating, 0) / vendorReviews.length;
-  },
-
-  loadFromStorage: () => {
-    set({
-      vendors: loadVendorsFromStorage(),
-      reviews: loadReviewsFromStorage(),
-    });
-  },
-
-  saveToStorage: () => {
-    const { vendors, reviews } = get();
-    storageSet(VENDORS_STORAGE_KEY, vendors);
-    storageSet(REVIEWS_STORAGE_KEY, reviews);
-  },
+    getVendorsByCategory: (category: string) => {
+        const vendors = loadVendorsFromStorage();
+        return vendors.filter((v) => v.category === category);
+    },
 }));
 
 // Listen for storage events to sync across tabs
 window.addEventListener('storage', (event) => {
-  if (event.key === VENDORS_STORAGE_KEY || event.key === REVIEWS_STORAGE_KEY) {
-    useVendorStore.getState().loadFromStorage();
-  }
+    if (event.key === VENDORS_STORAGE_KEY) {
+        useVendorStore.getState().fetchVendors();
+    }
 });
